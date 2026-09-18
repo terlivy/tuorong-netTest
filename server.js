@@ -97,6 +97,7 @@ async function routeRequest(req, res, context) {
     const records = await readRecords(dataFile);
     records.unshift(record);
     await writeRecords(dataFile, records);
+    logRecordEvent(req, 'create', record);
     sendJson(res, 201, { record });
     return;
   }
@@ -113,14 +114,17 @@ async function routeRequest(req, res, context) {
     }
     records[index] = normalizePatch(records[index], patch);
     await writeRecords(dataFile, records);
+    logRecordEvent(req, 'update', records[index]);
     sendJson(res, 200, { record: records[index] });
     return;
   }
 
   if (recordMatch && req.method === 'DELETE') {
     const records = await readRecords(dataFile);
+    const deletedRecord = records.find((record) => record.id === recordMatch[1]) || null;
     const nextRecords = records.filter((record) => record.id !== recordMatch[1]);
     await writeRecords(dataFile, nextRecords);
+    logRecordEvent(req, 'delete', deletedRecord);
     sendJson(res, 200, { deleted: records.length - nextRecords.length });
     return;
   }
@@ -146,6 +150,7 @@ async function routeRequest(req, res, context) {
       }),
     );
     await writeRecords(dataFile, [...normalized, ...records]);
+    normalized.forEach((record) => logRecordEvent(req, 'create', record));
     sendJson(res, 200, { imported: normalized.length });
     return;
   }
@@ -244,6 +249,44 @@ function getAccessLogStream() {
     });
   }
   return accessLogStream;
+}
+
+const RECORD_EVENT_PREFIX = 'records-events-';
+const RECORD_EVENT_EXT = '.jsonl';
+let recordEventStream = null;
+let recordEventDate = '';
+
+function getRecordEventStream() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== recordEventDate || !recordEventStream) {
+    if (recordEventStream) {
+      try { recordEventStream.end(); } catch (e) { /* ignore */ }
+    }
+    recordEventDate = today;
+    recordEventStream = fs.createWriteStream(
+      path.join(ROOT, 'data', `${RECORD_EVENT_PREFIX}${today}${RECORD_EVENT_EXT}`),
+      { flags: 'a' },
+    );
+    recordEventStream.on('error', (error) => {
+      console.error('record event log write error', error.message);
+    });
+  }
+  return recordEventStream;
+}
+
+function logRecordEvent(req, event, record) {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      event,
+      ip: clientIpFor(req).replace(/^::ffff:/, ''),
+      recordId: record && record.id ? record.id : null,
+      snapshot: record || null,
+    };
+    getRecordEventStream().write(JSON.stringify(entry) + '\n');
+  } catch (err) {
+    console.error('record event log error', err.message);
+  }
 }
 
 function writeAccessLog(req, res, durationMs) {
