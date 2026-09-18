@@ -209,23 +209,11 @@
       <textarea id="notes" placeholder="可填写运营商、所在城市、测试账号、是否开了代理等"></textarea>
     </section>
 
-    <section>
-      <h2>自动采集信息</h2>
-      <div class="grid">
-        <div class="item"><span class="label">系统</span><span class="value" id="os-info">分析中</span></div>
-        <div class="item"><span class="label">手机品牌</span><span class="value" id="brand-info">分析中</span></div>
-        <div class="item"><span class="label">浏览器</span><span class="value" id="browser-info">分析中</span></div>
-        <div class="item"><span class="label">屏幕</span><span class="value" id="screen-info">分析中</span></div>
-        <div class="item"><span class="label">语言</span><span class="value" id="language-info">分析中</span></div>
-        <div class="item"><span class="label">时区</span><span class="value" id="timezone-info">分析中</span></div>
-      </div>
-    </section>
-
-    <section>
-      <h2>网络诊断</h2>
-      <div class="item"><span class="label">国内基础网络</span><span class="value"><span class="status testing" id="ping-domestic">测试中</span></span></div>
-      <div class="item"><span class="label">目标网站 studio.atlascapture.io</span><span class="value"><span class="status testing" id="ping-target">测试中</span></span></div>
-      <div class="item"><span class="label">海外公共依赖</span><span class="value"><span class="status testing" id="ping-google">测试中</span></span></div>
+    <section id="diagnostics-section" hidden>
+      <h2>网络诊断结果</h2>
+      <div class="item"><span class="label">国内基础网络</span><span class="value"><span class="status testing" id="ping-domestic">待测试</span></span></div>
+      <div class="item"><span class="label">目标网站 studio.atlascapture.io</span><span class="value"><span class="status testing" id="ping-target">待测试</span></span></div>
+      <div class="item"><span class="label">海外公共依赖</span><span class="value"><span class="status testing" id="ping-google">待测试</span></span></div>
     </section>
 
     <button id="submit-btn" type="button">提交测试记录</button>
@@ -297,12 +285,6 @@
       const matchedBrowser = browserRules.find(([key]) => ua.includes(key));
       reportData.browser = matchedBrowser ? matchedBrowser[1] : 'WebKit/其他浏览器';
 
-      setText('os-info', reportData.os);
-      setText('brand-info', reportData.brand);
-      setText('browser-info', reportData.browser);
-      setText('screen-info', reportData.screen);
-      setText('language-info', reportData.language);
-      setText('timezone-info', reportData.timezone);
     }
 
     async function testConnect(name, url, elementId) {
@@ -339,10 +321,6 @@
       element.className = `status ${className}`;
     }
 
-    function setText(id, value) {
-      document.getElementById(id).textContent = value || '未知';
-    }
-
     async function submitData() {
       const button = document.getElementById('submit-btn');
       const message = document.getElementById('message');
@@ -360,8 +338,21 @@
       }
 
       button.disabled = true;
+      button.textContent = '正在诊断网络';
+      message.textContent = '正在执行网络诊断，请稍候...';
+
+      const diagnosticsSection = document.getElementById('diagnostics-section');
+      diagnosticsSection.hidden = false;
+      resetDiagnosticsStatus();
+
+      await Promise.all([
+        testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic'),
+        testConnect('target', TARGET_MAIN_SITE, 'ping-target'),
+        testConnect('googleapis', 'https://www.googleapis.com', 'ping-google'),
+      ]);
+
       button.textContent = '正在提交';
-      message.textContent = '';
+      message.textContent = '网络诊断完成，正在提交测试记录...';
 
       try {
         const response = await fetch(recordsApi, {
@@ -377,6 +368,20 @@
         button.disabled = false;
         button.textContent = '重新提交测试记录';
       }
+    }
+
+    function resetDiagnosticsStatus() {
+      [
+        ['ping-domestic', '测试中'],
+        ['ping-target', '测试中'],
+        ['ping-google', '测试中'],
+      ].forEach(([id, text]) => {
+        const element = document.getElementById(id);
+        element.textContent = text;
+        element.className = 'status testing';
+      });
+      reportData.diagnostics = {};
+      reportData.networkSummary = '';
     }
 
     async function collectLocation() {
@@ -424,9 +429,6 @@
 
     window.addEventListener('load', () => {
       analyzeEnvironment();
-      testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic');
-      testConnect('target', TARGET_MAIN_SITE, 'ping-target');
-      testConnect('googleapis', 'https://www.googleapis.com', 'ping-google');
       document.getElementById('location-btn').addEventListener('click', collectLocation);
       document.getElementById('submit-btn').addEventListener('click', submitData);
     });
