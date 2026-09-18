@@ -276,6 +276,7 @@ function getRecordEventStream() {
 
 function logRecordEvent(req, event, record) {
   try {
+    const today = new Date().toISOString().slice(0, 10);
     const entry = {
       ts: new Date().toISOString(),
       event,
@@ -283,7 +284,8 @@ function logRecordEvent(req, event, record) {
       recordId: record && record.id ? record.id : null,
       snapshot: record || null,
     };
-    getRecordEventStream().write(JSON.stringify(entry) + '\n');
+    const filename = path.join(ROOT, 'data', `${RECORD_EVENT_PREFIX}${today}${RECORD_EVENT_EXT}`);
+    fs.appendFileSync(filename, JSON.stringify(entry) + '\n', 'utf8');
   } catch (err) {
     console.error('record event log error', err.message);
   }
