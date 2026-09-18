@@ -119,6 +119,31 @@
     .access-table tr.warn td { color: var(--amber); }
     .access-table tr.err td { color: var(--red); }
 
+    .events-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .events-table th,
+    .events-table td {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .events-table th { color: var(--muted); font-size: 12px; }
+
+    .events-table tr.event-create td:nth-child(2) { color: var(--blue); font-weight: 600; }
+    .events-table tr.event-update td:nth-child(2) { color: var(--amber); font-weight: 600; }
+    .events-table tr.event-delete td:nth-child(2) { color: var(--red); font-weight: 600; }
+
+    .events-summary {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
     .tabs {
       display: flex;
       gap: 4px;
@@ -293,6 +318,7 @@
     <div class="tabs">
       <button type="button" class="tab active" data-tab="records">问题记录</button>
       <button type="button" class="tab" data-tab="access">访问记录</button>
+      <button type="button" class="tab" data-tab="events">操作日志</button>
     </div>
 
     <section class="tab-panel active" data-tab="records">
@@ -384,6 +410,34 @@
       </table>
       <div class="pagination" id="access-pagination"></div>
     </section>
+
+    <section class="events-panel tab-panel" data-tab="events">
+      <h2>操作日志</h2>
+      <p>来自 <code>data/records-events-YYYY-MM-DD.jsonl</code>，按日期分文件、append-only。每条记录对 records.json 的 create / update / delete 都会写一行，包含服务端观测到的客户端 IP。</p>
+      <div style="display:flex; gap:8px; align-items:end; margin-bottom:10px;">
+        <div>
+          <label for="events-days">最近天数</label>
+          <input id="events-days" type="number" min="1" max="365" value="7" style="width:90px;">
+        </div>
+        <button type="button" id="events-refresh-btn">刷新</button>
+        <span class="message" id="events-message" style="flex:1;"></span>
+      </div>
+      <table class="events-table">
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>事件</th>
+            <th>IP</th>
+            <th>记录 ID</th>
+            <th>摘要</th>
+          </tr>
+        </thead>
+        <tbody id="events-tbody">
+          <tr><td colspan="5" style="text-align:center; color: var(--muted);">加载中…</td></tr>
+        </tbody>
+      </table>
+      <div class="pagination" id="events-pagination"></div>
+    </section>
   </main>
   <dialog id="edit-dialog">
     <form method="dialog" class="dialog-body" id="edit-form">
@@ -459,6 +513,7 @@
       records: [],
       pagination: { page: 1, pageSize: 20, total: 0 },
       accessPagination: { page: 1, pageSize: 30, total: 0 },
+      eventsPagination: { page: 1, pageSize: 30, total: 0 },
     };
 
     function totalPages(p) {
@@ -710,6 +765,71 @@
       }
     }
 
+    async function loadEventsLog() {
+      const button = document.getElementById('events-refresh-btn');
+      const message = document.getElementById('events-message');
+      const days = Number(document.getElementById('events-days').value) || 7;
+      button.disabled = true;
+      message.textContent = '正在读取事件日志…';
+      try {
+        const response = await fetch(`/api/records-events?days=${encodeURIComponent(days)}&page=${state.eventsPagination.page}&pageSize=${state.eventsPagination.pageSize}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        state.eventsPagination = {
+          page: result.page || 1,
+          pageSize: result.pageSize || 30,
+          total: result.total || 0,
+        };
+        renderEventsTable(result.events || []);
+        renderPaginationControls('events-pagination', state.eventsPagination, loadEventsLog);
+        message.textContent = `已加载 ${result.total} 条事件（第 ${state.eventsPagination.page} / ${totalPages(state.eventsPagination)} 页）。`;
+      } catch (error) {
+        message.textContent = `加载失败：${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function summarizeEventSnapshot(event, snap) {
+      if (!snap) return '-';
+      if (event === 'delete') {
+        const phone = snap.phone || '';
+        const carrier = snap.carrier || '';
+        return `${phone}${carrier ? ' · ' + carrier : ''}`;
+      }
+      const phone = snap.phone || '';
+      const carrier = snap.carrier || '';
+      const networkClass = snap.networkClass || '';
+      const location = snap.manualLocation || '';
+      const parts = [];
+      if (phone) parts.push(phone);
+      if (carrier) parts.push(carrier);
+      if (networkClass) parts.push(networkClass);
+      if (location) parts.push(location);
+      return parts.length ? parts.join(' · ') : '-';
+    }
+
+    function renderEventsTable(events) {
+      const tbody = document.getElementById('events-tbody');
+      if (!events.length) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--muted);">还没有操作日志。提交 / 编辑 / 删除一条记录后，这里会出现事件。</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = events.map((e) => {
+        const snap = e.snapshot || {};
+        const phone = snap.phone || '';
+        return `
+<tr class="event-${escapeHtml(e.event)}">
+  <td>${escapeHtml(formatDate(e.ts))}</td>
+  <td>${escapeHtml(e.event)}</td>
+  <td>${escapeHtml(e.ip || '-')}</td>
+  <td><code>${escapeHtml((e.recordId || '').slice(0, 8))}${e.recordId && e.recordId.length > 8 ? '…' : ''}</code><br><span class="muted">${escapeHtml(phone)}</span></td>
+  <td class="events-summary">${escapeHtml(summarizeEventSnapshot(e.event, snap))}</td>
+</tr>
+`;
+      }).join('');
+    }
+
     function renderAccessKpis(result) {
       const summary = result.summary || {};
       const totalRequests = summary.totalRequests || 0;
@@ -777,10 +897,13 @@
         document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.tab === target));
         if (target === 'access') {
           loadAccessSummary();
+        } else if (target === 'events') {
+          loadEventsLog();
         }
       });
     });
     document.getElementById('access-refresh-btn').addEventListener('click', loadAccessSummary);
+    document.getElementById('events-refresh-btn').addEventListener('click', loadEventsLog);
     document.getElementById('export-btn').addEventListener('click', exportCsv);
     document.getElementById('import-file').addEventListener('change', importCsv);
     document.getElementById('edit-form').addEventListener('submit', saveEdit);

@@ -182,6 +182,15 @@ async function routeRequest(req, res, context) {
     return;
   }
 
+  if (pathname === '/api/records-events' && req.method === 'GET') {
+    const days = clampNumber(url.searchParams.get('days'), 1, 365, 7);
+    const page = clampNumber(url.searchParams.get('page'), 1, 10000, 1);
+    const pageSize = clampNumber(url.searchParams.get('pageSize'), 1, 200, 30);
+    const result = await buildRecordEventsLog({ days, page, pageSize });
+    sendJson(res, 200, result);
+    return;
+  }
+
   if (pathname === '/api/reverse-geocode' && req.method === 'GET') {
     const lat = clean(url.searchParams.get('lat'));
     const lng = clean(url.searchParams.get('lng'));
@@ -208,6 +217,7 @@ function isCoordinate(value, maxAbs) {
 }
 
 function clampNumber(value, min, max, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(number)));
@@ -416,6 +426,50 @@ async function buildAccessSummary(days, { page = 1, pageSize = 30 } = {}) {
   });
 
   return { days: paged.length, total: total, totalRequests, summary, requestedDays: days, page, pageSize, daily: paged };
+}
+
+async function buildRecordEventsLog({ days, page, pageSize }) {
+  const dataDir = path.join(ROOT, 'data');
+  let files = [];
+  try {
+    files = await fsPromises.readdir(dataDir);
+  } catch (err) {
+    return { total: 0, page, pageSize, days, events: [] };
+  }
+  const cutoff = Date.now() - (days - 1) * 86400000;
+  const cutoffDate = new Date(cutoff).toISOString().slice(0, 10);
+
+  const allEvents = [];
+  for (const name of files) {
+    if (!name.startsWith(RECORD_EVENT_PREFIX) || !name.endsWith(RECORD_EVENT_EXT)) continue;
+    const date = name.slice(RECORD_EVENT_PREFIX.length, -RECORD_EVENT_EXT.length);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < cutoffDate) continue;
+    let text;
+    try {
+      text = await fsPromises.readFile(path.join(dataDir, name), 'utf8');
+    } catch (err) {
+      continue;
+    }
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const entry = JSON.parse(trimmed);
+        if (entry.ts && entry.ts.slice(0, 10) === date) {
+          allEvents.push(entry);
+        }
+      } catch (err) {
+        // skip malformed lines
+      }
+    }
+  }
+
+  allEvents.sort((a, b) => b.ts.localeCompare(a.ts));
+  const total = allEvents.length;
+  const start = (page - 1) * pageSize;
+  const events = allEvents.slice(start, start + pageSize);
+
+  return { total, page, pageSize, days, events };
 }
 
 async function resolveDomain(domain) {
