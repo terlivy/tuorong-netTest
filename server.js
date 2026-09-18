@@ -50,15 +50,23 @@ const CSV_FIELDS = [
 function createApp(options = {}) {
   const dataFile = options.dataFile || DEFAULT_DATA_FILE;
 
-  return http.createServer(async (req, res) => {
+  return http.createServer((req, res) => {
     const start = Date.now();
-    try {
-      await routeRequest(req, res, { dataFile });
-    } catch (error) {
-      sendJson(res, 500, { error: '服务器内部错误', detail: error.message });
-    } finally {
+    let logged = false;
+    const logOnce = () => {
+      if (logged) return;
+      logged = true;
       writeAccessLog(req, res, Date.now() - start);
-    }
+    };
+    res.on('finish', logOnce);
+    res.on('close', logOnce);
+    routeRequest(req, res, { dataFile }).catch((error) => {
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: '服务器内部错误', detail: error.message });
+      } else {
+        try { res.end(); } catch (e) { /* socket already closed */ }
+      }
+    });
   });
 }
 
@@ -191,6 +199,9 @@ function clientIpFor(req) {
 
 const ACCESS_LOG_PREFIX = 'access-';
 const ACCESS_LOG_EXT = '.jsonl';
+const NETWORK_INFO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小时
+const NETWORK_INFO_CACHE_MAX = 500;
+const networkInfoCache = new Map(); // ip -> { result, expiresAt }
 
 let accessLogStream = null;
 let accessLogDate = '';
@@ -327,13 +338,19 @@ async function buildAccessSummary(days) {
 }
 
 async function lookupNetworkInfo(ip) {
-  // 跳过本地 / 私有 IP — 反查无意义
+  // 跳过本地 / 私有 IP — 反查无意义，也不进缓存
   if (!ip || ip === '127.0.0.1' || ip === '::1' || /^10\./.test(ip) || /^192\.168\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) {
     return { configured: false, error: '内网 IP，不参与反查' };
   }
+
+  const cached = networkInfoCache.get(ip);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
   const url = new URL(`https://ipwho.is/${encodeURIComponent(ip)}`);
   url.searchParams.set('fields', 'connection.isp,connection.org,connection.asn,country.name,region.name,city.name');
-  return new Promise((resolve) => {
+  const result = await new Promise((resolve) => {
     const req = https.request(url, { method: 'GET', timeout: 4000 }, (response) => {
       let body = '';
       response.setEncoding('utf8');
@@ -366,6 +383,18 @@ async function lookupNetworkInfo(ip) {
     });
     req.end();
   });
+
+  // 只缓存成功结果（避免反复命中失败键）
+  if (!result.error) {
+    networkInfoCache.set(ip, { result, expiresAt: Date.now() + NETWORK_INFO_CACHE_TTL_MS });
+    if (networkInfoCache.size > NETWORK_INFO_CACHE_MAX) {
+      const now = Date.now();
+      for (const [key, val] of networkInfoCache) {
+        if (val.expiresAt <= now) networkInfoCache.delete(key);
+      }
+    }
+  }
+  return result;
 }
 
 function reverseGeocodeWithAmap({ lat, lng, key }) {
