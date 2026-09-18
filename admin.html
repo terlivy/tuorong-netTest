@@ -106,6 +106,16 @@
       font-size: 12px;
     }
 
+    .pagination {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pagination button[disabled] { opacity: 0.4; cursor: not-allowed; }
+
     .access-table tr.warn td { color: var(--amber); }
     .access-table tr.err td { color: var(--red); }
 
@@ -338,6 +348,7 @@
           <tbody id="records-body"></tbody>
         </table>
       </div>
+      <div class="pagination" id="records-pagination"></div>
     </section>
 
     <section class="access-panel tab-panel" data-tab="access">
@@ -371,6 +382,7 @@
           <tr><td colspan="10" style="text-align:center; color: var(--muted);">加载中…</td></tr>
         </tbody>
       </table>
+      <div class="pagination" id="access-pagination"></div>
     </section>
   </main>
   <dialog id="edit-dialog">
@@ -443,7 +455,41 @@
   </dialog>
 
   <script>
-    const state = { records: [] };
+    const state = {
+      records: [],
+      pagination: { page: 1, pageSize: 20, total: 0 },
+      accessPagination: { page: 1, pageSize: 30, total: 0 },
+    };
+
+    function totalPages(p) {
+      if (!p || !p.total || !p.pageSize) return 1;
+      return Math.max(1, Math.ceil(p.total / p.pageSize));
+    }
+
+    function renderPaginationControls(containerId, p, onChange) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const total = totalPages(p);
+      const cur = Math.min(Math.max(1, p.page), total);
+      if (cur !== p.page) p.page = cur;
+      container.innerHTML = `
+        <button type="button" data-act="first" ${cur === 1 ? 'disabled' : ''}>« 首页</button>
+        <button type="button" data-act="prev" ${cur === 1 ? 'disabled' : ''}>‹ 上一页</button>
+        <span class="muted">第 ${cur} / ${total} 页 · 共 ${p.total} 条 · 每页 ${p.pageSize}</span>
+        <button type="button" data-act="next" ${cur === total ? 'disabled' : ''}>下一页 ›</button>
+        <button type="button" data-act="last" ${cur === total ? 'disabled' : ''}>末页 »</button>
+      `;
+      container.querySelectorAll('button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const last = totalPages(p);
+          if (btn.dataset.act === 'first') p.page = 1;
+          else if (btn.dataset.act === 'prev') p.page = Math.max(1, p.page - 1);
+          else if (btn.dataset.act === 'next') p.page = Math.min(last, p.page + 1);
+          else if (btn.dataset.act === 'last') p.page = last;
+          onChange();
+        });
+      });
+    }
 
     function collectDistinctValues(records, field) {
       const set = new Set();
@@ -516,17 +562,26 @@
     }
 
     async function loadRecords() {
-      const response = await fetch(`/api/records?${buildParams()}`);
+      const params = buildParams();
+      params.set('page', String(state.pagination.page));
+      params.set('pageSize', String(state.pagination.pageSize));
+      const response = await fetch(`/api/records?${params}`);
       const data = await response.json();
       state.records = data.records || [];
+      state.pagination = {
+        page: data.page || 1,
+        pageSize: data.pageSize || 20,
+        total: data.total || 0,
+      };
       renderRecords();
       refreshDeviceSelects();
+      renderPaginationControls('records-pagination', state.pagination, loadRecords);
     }
 
     function renderRecords() {
       const body = document.getElementById('records-body');
       const message = document.getElementById('message');
-      message.textContent = `共 ${state.records.length} 条记录`;
+      message.textContent = `共 ${state.pagination.total} 条记录（第 ${state.pagination.page} 页）`;
       body.innerHTML = state.records.map((record) => `
         <tr>
           <td>${escapeHtml(formatDate(record.createdAt))}<br><span class="muted">${escapeHtml(formatDate(record.updatedAt))}</span></td>
@@ -636,12 +691,18 @@
       button.disabled = true;
       message.textContent = '正在聚合访问日志…';
       try {
-        const response = await fetch(`/api/access/summary?days=${encodeURIComponent(days)}`);
+        const response = await fetch(`/api/access/summary?days=${encodeURIComponent(days)}&page=${state.accessPagination.page}&pageSize=${state.accessPagination.pageSize}`);
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        state.accessPagination = {
+          page: result.page || 1,
+          pageSize: result.pageSize || 30,
+          total: result.total || 0,
+        };
         renderAccessKpis(result);
         renderAccessTable(result.daily || []);
-        message.textContent = `已加载 ${result.days}/${result.requestedDays} 天的访问统计。`;
+        renderPaginationControls('access-pagination', state.accessPagination, loadAccessSummary);
+        message.textContent = `已加载 ${result.total} 天的访问统计（第 ${state.accessPagination.page} / ${totalPages(state.accessPagination)} 页）。`;
       } catch (error) {
         message.textContent = `加载失败：${error.message}`;
       } finally {
@@ -650,13 +711,12 @@
     }
 
     function renderAccessKpis(result) {
-      const daily = (result.daily || []).slice();
-      const totalRequests = daily.reduce((sum, day) => sum + (day.total || 0), 0);
-      const last = daily.length ? daily[daily.length - 1] : null;
-      const lastTotal = last ? last.total : 0;
-      const lastUniqueIps = last ? last.uniqueIps : 0;
-      const lastAvgLatency = last ? last.averageLatencyMs : 0;
-      const lastErrorRate = last ? last.errorRate : 0;
+      const summary = result.summary || {};
+      const totalRequests = summary.totalRequests || 0;
+      const lastTotal = summary.latestTotal || 0;
+      const lastUniqueIps = summary.latestUniqueIps || 0;
+      const lastAvgLatency = summary.latestAvgLatencyMs || 0;
+      const lastErrorRate = summary.latestErrorRate || 0;
 
       const errorClass = lastErrorRate >= 0.05 ? 'err' : lastErrorRate >= 0.01 ? 'warn' : '';
       const latencyClass = lastAvgLatency >= 500 ? 'err' : lastAvgLatency >= 200 ? 'warn' : '';
@@ -706,7 +766,10 @@
       }).join('');
     }
 
-    filters.forEach((id) => document.getElementById(id).addEventListener('input', loadRecords));
+    filters.forEach((id) => document.getElementById(id).addEventListener('input', () => {
+      state.pagination.page = 1;
+      loadRecords();
+    }));
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         const target = tab.dataset.tab;

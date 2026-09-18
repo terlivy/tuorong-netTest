@@ -79,8 +79,14 @@ async function routeRequest(req, res, context) {
   const pathname = decodeURIComponent(url.pathname);
 
   if (pathname === '/api/records' && req.method === 'GET') {
-    const records = await readRecords(dataFile);
-    sendJson(res, 200, { records: filterRecords(records, url.searchParams) });
+    const page = clampNumber(url.searchParams.get('page'), 1, 100000, 1);
+    const pageSize = clampNumber(url.searchParams.get('pageSize'), 1, 200, 20);
+    const all = await readRecords(dataFile);
+    const filtered = filterRecords(all, url.searchParams);
+    const total = filtered.length;
+    const start = (page - 1) * pageSize;
+    const records = filtered.slice(start, start + pageSize);
+    sendJson(res, 200, { records, total, page, pageSize });
     return;
   }
 
@@ -164,7 +170,9 @@ async function routeRequest(req, res, context) {
 
   if (pathname === '/api/access/summary' && req.method === 'GET') {
     const days = clampNumber(url.searchParams.get('days'), 1, 365, 30);
-    const summary = await buildAccessSummary(days);
+    const page = clampNumber(url.searchParams.get('page'), 1, 10000, 1);
+    const pageSize = clampNumber(url.searchParams.get('pageSize'), 1, 200, 30);
+    const summary = await buildAccessSummary(days, { page, pageSize });
     sendJson(res, 200, summary);
     return;
   }
@@ -256,13 +264,13 @@ function writeAccessLog(req, res, durationMs) {
   }
 }
 
-async function buildAccessSummary(days) {
+async function buildAccessSummary(days, { page = 1, pageSize = 30 } = {}) {
   const dataDir = path.join(ROOT, 'data');
   let files;
   try {
     files = await fsPromises.readdir(dataDir);
   } catch (err) {
-    return { days: 0, requestedDays: days, daily: [] };
+    return { days: 0, total: 0, requestedDays: days, page, pageSize, daily: [] };
   }
   const cutoff = Date.now() - (days - 1) * 24 * 60 * 60 * 1000;
   const cutoffDate = new Date(cutoff).toISOString().slice(0, 10);
@@ -322,7 +330,21 @@ async function buildAccessSummary(days) {
     }
   }
 
-  const daily = [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)).map((b) => {
+  const sortedDaily = [...dailyMap.values()].sort((a, b) => b.date.localeCompare(a.date));
+  const total = sortedDaily.length;
+  const totalRequests = sortedDaily.reduce((s, d) => s + d.total, 0);
+  const latest = sortedDaily[0] || null;
+  const summary = {
+    totalRequests,
+    latestDate: latest ? latest.date : null,
+    latestTotal: latest ? latest.total : 0,
+    latestUniqueIps: latest ? latest.uniqueIps : 0,
+    latestAvgLatencyMs: latest ? latest.averageLatencyMs : 0,
+    latestErrorRate: latest ? latest.errorRate : 0,
+  };
+  const start = (page - 1) * pageSize;
+  const paged = sortedDaily.slice(start, start + pageSize);
+  const daily = paged.map((b) => {
     const latencies = b.latencies.sort((x, y) => x - y);
     const errors = b.serverErrors + b.clientErrors;
     const errorRate = b.total ? errors / b.total : 0;
@@ -348,7 +370,7 @@ async function buildAccessSummary(days) {
     };
   });
 
-  return { days: daily.length, requestedDays: days, daily };
+  return { days: paged.length, total: total, totalRequests, summary, requestedDays: days, page, pageSize, daily: paged };
 }
 
 async function resolveDomain(domain) {
