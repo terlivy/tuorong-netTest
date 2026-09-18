@@ -558,7 +558,7 @@
         const value = document.getElementById(id).value.trim();
         if (value) params.set(id, value);
       });
-      return params.toString();
+      return params;
     }
 
     async function loadRecords() {
