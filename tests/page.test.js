@@ -13,3 +13,12 @@ test('mobile page delays network diagnostics until submit', async () => {
   assert.ok(loadHandler);
   assert.equal(loadHandler[1].includes('testConnect('), false);
 });
+
+test('mobile page alerts based on target site connectivity after submit', async () => {
+  const html = await fs.readFile('test.html', 'utf8');
+
+  assert.match(html, /const \[[\s\S]*targetResult[\s\S]*\] = await Promise\.all/);
+  assert.match(html, /targetResult\.ok/);
+  assert.match(html, /alert\('成功/);
+  assert.match(html, /alert\('已记录问题，技术服务会加急处理/);
+});

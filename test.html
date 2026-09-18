@@ -304,16 +304,14 @@
         const duration = Date.now() - startedAt;
         setStatus(element, `正常 ${duration}ms`, 'success');
         reportData.diagnostics[name] = { ok: true, duration, url };
+        return reportData.diagnostics[name];
       } catch (error) {
         clearTimeout(timeoutId);
         const reason = error.name === 'AbortError' ? '连接超时' : '无法访问';
         setStatus(element, reason, 'error');
         reportData.diagnostics[name] = { ok: false, reason, url };
+        return reportData.diagnostics[name];
       }
-
-      reportData.networkSummary = Object.entries(reportData.diagnostics)
-        .map(([key, value]) => `${key}:${value.ok ? `${value.duration}ms` : value.reason}`)
-        .join('; ');
     }
 
     function setStatus(element, text, className) {
@@ -345,11 +343,14 @@
       diagnosticsSection.hidden = false;
       resetDiagnosticsStatus();
 
-      await Promise.all([
+      const [domesticResult, targetResult, googleapisResult] = await Promise.all([
         testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic'),
         testConnect('target', TARGET_MAIN_SITE, 'ping-target'),
         testConnect('googleapis', 'https://www.googleapis.com', 'ping-google'),
       ]);
+      reportData.networkSummary = [domesticResult, targetResult, googleapisResult]
+        .map((value) => `${value.url}:${value.ok ? `${value.duration}ms` : value.reason}`)
+        .join('; ');
 
       button.textContent = '正在提交';
       message.textContent = '网络诊断完成，正在提交测试记录...';
@@ -361,7 +362,13 @@
           body: JSON.stringify(reportData),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        message.textContent = '提交成功，技术人员可以在后台查看。';
+        if (targetResult.ok) {
+          alert('成功：您的浏览器可以正常访问目标登录地址。');
+          message.textContent = '提交成功，目标网站访问正常。';
+        } else {
+          alert('已记录问题，技术服务会加急处理。');
+          message.textContent = '已记录问题，技术服务会加急处理。';
+        }
         button.textContent = '已提交';
       } catch (error) {
         message.textContent = `提交失败：${error.message}`;
