@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手机登录问题测试</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #637083;
+      --line: #d9e2ec;
+      --blue: #1769aa;
+      --green: #1f8a5b;
+      --red: #bf3a30;
+      --amber: #a66500;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    header {
+      padding: 8px 0 16px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0;
+      padding: 16px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: #334155;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 11px 12px;
+      color: var(--text);
+      background: #fff;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 6px;
+      padding: 13px 14px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+    }
+
+    button:disabled {
+      background: #8aa9c4;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .item {
+      border-top: 1px solid var(--line);
+      padding: 10px 0 0;
+      min-width: 0;
+    }
+
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .value {
+      display: block;
+      margin-top: 3px;
+      word-break: break-word;
+      font-weight: 650;
+    }
+
+    .status {
+      display: inline-block;
+      min-width: 82px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .testing { background: #fff4cf; color: var(--amber); }
+    .success { background: #dff5e8; color: var(--green); }
+    .error { background: #fde2df; color: var(--red); }
+
+    .message {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 560px) {
+      main { padding: 14px; }
+      h1 { font-size: 21px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>手机登录问题测试</h1>
+      <p>请在发生无法登录时填写手机号并提交，系统会自动记录手机、浏览器和网络诊断信息。</p>
+    </header>
+
+    <section>
+      <h2>测试人员填写</h2>
+      <label for="phone">电话号码</label>
+      <input id="phone" inputmode="tel" autocomplete="tel" placeholder="请输入本机或测试手机号">
+
+      <label for="login-result">登录结果</label>
+      <select id="login-result">
+        <option value="failed">无法登录</option>
+        <option value="blank">页面空白</option>
+        <option value="slow">加载很慢</option>
+        <option value="sms_failed">验证码/短信异常</option>
+        <option value="success">可以登录</option>
+        <option value="other">其他</option>
+      </select>
+
+      <label for="issue">问题描述</label>
+      <textarea id="issue" placeholder="例如：点登录后一直转圈、收不到验证码、输入 code 后白屏"></textarea>
+
+      <label for="notes">备注</label>
+      <textarea id="notes" placeholder="可填写运营商、所在城市、测试账号、是否开了代理等"></textarea>
+    </section>
+
+    <section>
+      <h2>自动采集信息</h2>
+      <div class="grid">
+        <div class="item"><span class="label">系统</span><span class="value" id="os-info">分析中</span></div>
+        <div class="item"><span class="label">手机品牌</span><span class="value" id="brand-info">分析中</span></div>
+        <div class="item"><span class="label">浏览器</span><span class="value" id="browser-info">分析中</span></div>
+        <div class="item"><span class="label">屏幕</span><span class="value" id="screen-info">分析中</span></div>
+        <div class="item"><span class="label">语言</span><span class="value" id="language-info">分析中</span></div>
+        <div class="item"><span class="label">时区</span><span class="value" id="timezone-info">分析中</span></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>网络诊断</h2>
+      <div class="item"><span class="label">国内基础网络</span><span class="value"><span class="status testing" id="ping-domestic">测试中</span></span></div>
+      <div class="item"><span class="label">目标网站 studio.atlascapture.io</span><span class="value"><span class="status testing" id="ping-target">测试中</span></span></div>
+      <div class="item"><span class="label">海外公共依赖</span><span class="value"><span class="status testing" id="ping-google">测试中</span></span></div>
+    </section>
+
+    <button id="submit-btn" type="button">提交测试记录</button>
+    <div class="message" id="message"></div>
+  </main>
+
+  <script>
+    const TARGET_MAIN_SITE = 'https://studio.atlascapture.io/capture?code=';
+    const recordsApi = '/api/records';
+    const reportData = {
+      phone: '',
+      os: '未知',
+      brand: '通用/其他',
+      model: '',
+      browser: '未知',
+      loginResult: '',
+      issue: '',
+      notes: '',
+      userAgent: navigator.userAgent,
+      screen: `${window.screen.width}x${window.screen.height} DPR ${window.devicePixelRatio || 1}`,
+      language: navigator.language || '',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      targetUrl: TARGET_MAIN_SITE,
+      diagnostics: {},
+    };
+
+    const browserRules = [
+      ['micromessenger', '微信内置浏览器'],
+      ['mqqbrowser', 'QQ 浏览器'],
+      ['huaweibrowser', '华为浏览器'],
+      ['miuibrowser', '小米浏览器'],
+      ['heytapbrowser', 'OPPO 浏览器'],
+      ['vivobrowser', 'VIVO 浏览器'],
+      ['edgios', 'Edge iOS'],
+      ['edg', 'Edge'],
+      ['crios', 'Chrome iOS'],
+      ['chrome', 'Chrome'],
+      ['safari', 'Safari'],
+    ];
+
+    function analyzeEnvironment() {
+      const ua = navigator.userAgent.toLowerCase();
+
+      if (ua.includes('iphone') || ua.includes('ipad')) reportData.os = 'iOS';
+      else if (ua.includes('android')) reportData.os = 'Android';
+      else if (ua.includes('harmonyos')) reportData.os = 'HarmonyOS';
+      else if (ua.includes('windows')) reportData.os = 'Windows';
+      else if (ua.includes('mac os')) reportData.os = 'macOS';
+
+      if (ua.includes('huawei') || ua.includes('harmonyos')) reportData.brand = '华为';
+      else if (ua.includes('honor')) reportData.brand = '荣耀';
+      else if (ua.includes('xiaomi') || ua.includes('miui') || ua.includes('hyperos') || ua.includes('redmi')) reportData.brand = '小米/Redmi';
+      else if (ua.includes('oppo') || ua.includes('heytap')) reportData.brand = 'OPPO';
+      else if (ua.includes('vivo')) reportData.brand = 'VIVO';
+      else if (ua.includes('iphone') || ua.includes('ipad')) reportData.brand = '苹果';
+      else if (ua.includes('samsung')) reportData.brand = '三星';
+
+      const modelMatch = navigator.userAgent.match(/\(([^)]+)\)/);
+      reportData.model = modelMatch ? modelMatch[1] : '';
+
+      const matchedBrowser = browserRules.find(([key]) => ua.includes(key));
+      reportData.browser = matchedBrowser ? matchedBrowser[1] : 'WebKit/其他浏览器';
+
+      setText('os-info', reportData.os);
+      setText('brand-info', reportData.brand);
+      setText('browser-info', reportData.browser);
+      setText('screen-info', reportData.screen);
+      setText('language-info', reportData.language);
+      setText('timezone-info', reportData.timezone);
+    }
+
+    async function testConnect(name, url, elementId) {
+      const element = document.getElementById(elementId);
+      const controller = new AbortController();
+      const startedAt = Date.now();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+      try {
+        await fetch(`${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`, {
+          method: 'GET',
+          mode: 'no-cors',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const duration = Date.now() - startedAt;
+        setStatus(element, `正常 ${duration}ms`, 'success');
+        reportData.diagnostics[name] = { ok: true, duration, url };
+      } catch (error) {
+        clearTimeout(timeoutId);
+        const reason = error.name === 'AbortError' ? '连接超时' : '无法访问';
+        setStatus(element, reason, 'error');
+        reportData.diagnostics[name] = { ok: false, reason, url };
+      }
+
+      reportData.networkSummary = Object.entries(reportData.diagnostics)
+        .map(([key, value]) => `${key}:${value.ok ? `${value.duration}ms` : value.reason}`)
+        .join('; ');
+    }
+
+    function setStatus(element, text, className) {
+      element.textContent = text;
+      element.className = `status ${className}`;
+    }
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value || '未知';
+    }
+
+    async function submitData() {
+      const button = document.getElementById('submit-btn');
+      const message = document.getElementById('message');
+      reportData.phone = document.getElementById('phone').value.trim();
+      reportData.loginResult = document.getElementById('login-result').value;
+      reportData.issue = document.getElementById('issue').value.trim();
+      reportData.notes = document.getElementById('notes').value.trim();
+      reportData.status = reportData.loginResult === 'success' ? 'resolved' : 'open';
+
+      if (!reportData.phone) {
+        message.textContent = '请先填写电话号码。';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = '正在提交';
+      message.textContent = '';
+
+      try {
+        const response = await fetch(recordsApi, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(reportData),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        message.textContent = '提交成功，技术人员可以在后台查看。';
+        button.textContent = '已提交';
+      } catch (error) {
+        message.textContent = `提交失败：${error.message}`;
+        button.disabled = false;
+        button.textContent = '重新提交测试记录';
+      }
+    }
+
+    window.addEventListener('load', () => {
+      analyzeEnvironment();
+      testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic');
+      testConnect('target', TARGET_MAIN_SITE, 'ping-target');
+      testConnect('googleapis', 'https://www.googleapis.com', 'ping-google');
+      document.getElementById('submit-btn').addEventListener('click', submitData);
+    });
+  </script>
+</body>
+</html>

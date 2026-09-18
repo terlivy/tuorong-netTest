@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手机测试记录后台</title>
+  <style>
+    :root {
+      --bg: #eef2f6;
+      --panel: #ffffff;
+      --text: #17212f;
+      --muted: #64748b;
+      --line: #d6dee8;
+      --blue: #1769aa;
+      --green: #1f8a5b;
+      --red: #bf3a30;
+      --amber: #9a6500;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    header {
+      padding: 20px 24px 12px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    main {
+      padding: 0 24px 24px;
+    }
+
+    .toolbar, .table-wrap, .load-panel, .concurrency-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .load-panel, .concurrency-panel {
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .load-grid, .concurrency-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 2fr repeat(2, minmax(110px, 0.6fr)) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #f8fafc;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+    }
+
+    .load-detail {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .codebox {
+      min-height: 54px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #0f172a;
+      color: #dbeafe;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 2fr repeat(4, minmax(120px, 1fr)) auto auto;
+      gap: 10px;
+      align-items: end;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 68px;
+      resize: vertical;
+    }
+
+    button, .file-label {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: var(--blue);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .secondary { background: #475569; }
+    .danger { background: var(--red); }
+    .small { padding: 7px 9px; font-size: 13px; }
+
+    .file-input { display: none; }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #334155;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .open { background: #fff4cf; color: var(--amber); }
+    .resolved { background: #def5e8; color: var(--green); }
+    .blocked { background: #fde2df; color: var(--red); }
+    .muted { color: var(--muted); }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .message { margin: 10px 0; color: var(--muted); font-size: 14px; }
+
+    dialog {
+      border: 0;
+      border-radius: 8px;
+      padding: 0;
+      width: min(720px, calc(100vw - 28px));
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+    }
+
+    dialog::backdrop {
+      background: rgba(15, 23, 42, 0.45);
+    }
+
+    .dialog-body {
+      padding: 18px;
+    }
+
+    .dialog-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    @media (max-width: 980px) {
+      main, header { padding-left: 14px; padding-right: 14px; }
+      .toolbar, .load-grid, .concurrency-grid { grid-template-columns: 1fr 1fr; }
+      .toolbar > div:first-child { grid-column: 1 / -1; }
+      .load-grid > div:nth-child(2), .concurrency-grid > div:nth-child(2) { grid-column: 1 / -1; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .load-detail { grid-template-columns: 1fr; }
+      button, .file-label { width: 100%; }
+    }
+
+    @media (max-width: 620px) {
+      .toolbar, .dialog-grid, .load-grid, .concurrency-grid, .metrics { grid-template-columns: 1fr; }
+      .full { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>手机测试记录后台</h1>
+    <p>记录电话号码、手机信息、问题和解决方案，用于定位无法登录国外网站的原因。</p>
+  </header>
+
+  <main>
+    <section class="load-panel">
+      <h2>服务器压测</h2>
+      <p>默认目标是 42.192.109.248。为了防止误用，后端只允许压测授权名单内的主机。</p>
+      <div class="load-grid" style="margin-top:12px;">
+        <div>
+          <label for="load-target">服务器 IP / URL</label>
+          <input id="load-target" value="http://42.192.109.248/" placeholder="http://42.192.109.248/">
+        </div>
+        <div>
+          <label for="load-server-info">服务器信息</label>
+          <input id="load-server-info" placeholder="例如：2C4G / Node 服务 / 80端口 / 北京腾讯云">
+        </div>
+        <div>
+          <label for="load-duration">时长（秒）</label>
+          <input id="load-duration" type="number" min="1" max="60" value="10">
+        </div>
+        <div>
+          <label for="load-concurrency">并发</label>
+          <input id="load-concurrency" type="number" min="1" max="50" value="5">
+        </div>
+        <button type="button" id="load-start-btn">开始压测</button>
+      </div>
+      <div class="message" id="load-message">还没有压测数据。</div>
+      <div class="metrics" id="load-metrics"></div>
+      <div class="load-detail">
+        <div>
+          <label>状态码分布</label>
+          <div class="codebox" id="load-status-counts">-</div>
+        </div>
+        <div>
+          <label>错误分布</label>
+          <div class="codebox" id="load-error-counts">-</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="concurrency-panel">
+      <h2>并发测试</h2>
+      <p>固定总请求数，按指定并发同时请求，适合看服务器在瞬时并发下的完成耗时和成功率。</p>
+      <div class="concurrency-grid" style="margin-top:12px;">
+        <div>
+          <label for="concurrency-target">服务器 IP / URL</label>
+          <input id="concurrency-target" value="http://42.192.109.248/" placeholder="http://42.192.109.248/">
+        </div>
+        <div>
+          <label for="concurrency-server-info">服务器信息</label>
+          <input id="concurrency-server-info" placeholder="例如：2C4G / 80端口 / 当前版本">
+        </div>
+        <div>
+          <label for="concurrency-total">总请求数</label>
+          <input id="concurrency-total" type="number" min="1" max="1000" value="100">
+        </div>
+        <div>
+          <label for="concurrency-level">并发数</label>
+          <input id="concurrency-level" type="number" min="1" max="100" value="10">
+        </div>
+        <button type="button" id="concurrency-start-btn">开始并发测试</button>
+      </div>
+      <div class="message" id="concurrency-message">还没有并发测试数据。</div>
+      <div class="metrics" id="concurrency-metrics"></div>
+      <div class="load-detail">
+        <div>
+          <label>状态码分布</label>
+          <div class="codebox" id="concurrency-status-counts">-</div>
+        </div>
+        <div>
+          <label>错误分布</label>
+          <div class="codebox" id="concurrency-error-counts">-</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <div>
+        <label for="query">关键词</label>
+        <input id="query" placeholder="手机号、问题、方案、浏览器">
+      </div>
+      <div>
+        <label for="status">状态</label>
+        <select id="status">
+          <option value="">全部</option>
+          <option value="open">待处理</option>
+          <option value="blocked">阻塞</option>
+          <option value="resolved">已解决</option>
+        </select>
+      </div>
+      <div>
+        <label for="brand">品牌</label>
+        <input id="brand" placeholder="华为/苹果">
+      </div>
+      <div>
+        <label for="os">系统</label>
+        <input id="os" placeholder="Android/iOS">
+      </div>
+      <div>
+        <label for="browser">浏览器</label>
+        <input id="browser" placeholder="微信/Safari">
+      </div>
+      <button type="button" id="export-btn">导出 CSV</button>
+      <label class="file-label" for="import-file">导入 CSV</label>
+      <input class="file-input" id="import-file" type="file" accept=".csv,text/csv">
+    </div>
+
+    <div class="message" id="message">正在加载记录...</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>电话</th>
+            <th>状态</th>
+            <th>手机信息</th>
+            <th>登录结果</th>
+            <th>问题</th>
+            <th>解决方案</th>
+            <th>网络诊断</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="records-body"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <dialog id="edit-dialog">
+    <form method="dialog" class="dialog-body" id="edit-form">
+      <h2>编辑记录</h2>
+      <input type="hidden" id="edit-id">
+      <div class="dialog-grid">
+        <div>
+          <label for="edit-phone">电话号码</label>
+          <input id="edit-phone">
+        </div>
+        <div>
+          <label for="edit-status">状态</label>
+          <select id="edit-status">
+            <option value="open">待处理</option>
+            <option value="blocked">阻塞</option>
+            <option value="resolved">已解决</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="edit-issue">问题</label>
+          <textarea id="edit-issue"></textarea>
+        </div>
+        <div class="full">
+          <label for="edit-solution">解决方案</label>
+          <textarea id="edit-solution"></textarea>
+        </div>
+        <div class="full">
+          <label for="edit-notes">备注</label>
+          <textarea id="edit-notes"></textarea>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <button type="submit">保存</button>
+        <button type="button" class="secondary" id="cancel-edit">取消</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const state = { records: [] };
+    const filters = ['query', 'status', 'brand', 'os', 'browser'];
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char]));
+    }
+
+    function formatDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString('zh-CN', { hour12: false });
+    }
+
+    function statusLabel(status) {
+      return { open: '待处理', blocked: '阻塞', resolved: '已解决' }[status] || status || '待处理';
+    }
+
+    function buildParams() {
+      const params = new URLSearchParams();
+      filters.forEach((id) => {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(id, value);
+      });
+      return params.toString();
+    }
+
+    async function loadRecords() {
+      const response = await fetch(`/api/records?${buildParams()}`);
+      const data = await response.json();
+      state.records = data.records || [];
+      renderRecords();
+    }
+
+    function renderRecords() {
+      const body = document.getElementById('records-body');
+      const message = document.getElementById('message');
+      message.textContent = `共 ${state.records.length} 条记录`;
+      body.innerHTML = state.records.map((record) => `
+        <tr>
+          <td>${escapeHtml(formatDate(record.createdAt))}<br><span class="muted">${escapeHtml(formatDate(record.updatedAt))}</span></td>
+          <td>${escapeHtml(record.phone)}</td>
+          <td><span class="badge ${escapeHtml(record.status || 'open')}">${escapeHtml(statusLabel(record.status))}</span></td>
+          <td>
+            ${escapeHtml(record.brand)} ${escapeHtml(record.model)}<br>
+            <span class="muted">${escapeHtml(record.os)} / ${escapeHtml(record.browser)}</span><br>
+            <span class="muted">${escapeHtml(record.screen)}</span>
+          </td>
+          <td>${escapeHtml(record.loginResult)}</td>
+          <td>${escapeHtml(record.issue)}</td>
+          <td>${escapeHtml(record.solution)}</td>
+          <td>${escapeHtml(record.networkSummary)}</td>
+          <td>
+            <div class="actions">
+              <button class="small" type="button" onclick="openEdit('${record.id}')">编辑</button>
+              <button class="small danger" type="button" onclick="deleteRecord('${record.id}')">删除</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function openEdit(id) {
+      const record = state.records.find((item) => item.id === id);
+      if (!record) return;
+      document.getElementById('edit-id').value = record.id;
+      document.getElementById('edit-phone').value = record.phone || '';
+      document.getElementById('edit-status').value = record.status || 'open';
+      document.getElementById('edit-issue').value = record.issue || '';
+      document.getElementById('edit-solution').value = record.solution || '';
+      document.getElementById('edit-notes').value = record.notes || '';
+      document.getElementById('edit-dialog').showModal();
+    }
+
+    async function saveEdit(event) {
+      event.preventDefault();
+      const id = document.getElementById('edit-id').value;
+      await fetch(`/api/records/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          phone: document.getElementById('edit-phone').value,
+          status: document.getElementById('edit-status').value,
+          issue: document.getElementById('edit-issue').value,
+          solution: document.getElementById('edit-solution').value,
+          notes: document.getElementById('edit-notes').value,
+        }),
+      });
+      document.getElementById('edit-dialog').close();
+      await loadRecords();
+    }
+
+    async function deleteRecord(id) {
+      if (!confirm('确定删除这条记录吗？')) return;
+      await fetch(`/api/records/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadRecords();
+    }
+
+    function exportCsv() {
+      window.location.href = '/api/records/export';
+    }
+
+    async function importCsv(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const response = await fetch('/api/records/import', {
+        method: 'POST',
+        headers: { 'content-type': 'text/csv' },
+        body: text,
+      });
+      const result = await response.json();
+      document.getElementById('message').textContent = `已导入 ${result.imported || 0} 条记录`;
+      event.target.value = '';
+      await loadRecords();
+    }
+
+    async function runLoadTest() {
+      const button = document.getElementById('load-start-btn');
+      const message = document.getElementById('load-message');
+      const payload = {
+        target: document.getElementById('load-target').value.trim(),
+        serverInfo: document.getElementById('load-server-info').value.trim(),
+        durationSeconds: Number(document.getElementById('load-duration').value),
+        concurrency: Number(document.getElementById('load-concurrency').value),
+      };
+
+      if (!payload.target) {
+        message.textContent = '请填写服务器 IP 或 URL。';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = '压测中';
+      message.textContent = '正在压测，请等待结果返回。';
+      document.getElementById('load-metrics').innerHTML = '';
+      document.getElementById('load-status-counts').textContent = '-';
+      document.getElementById('load-error-counts').textContent = '-';
+
+      try {
+        const response = await fetch('/api/load-test', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        renderLoadResult(result);
+      } catch (error) {
+        message.textContent = `压测失败：${error.message}`;
+      } finally {
+        button.disabled = false;
+        button.textContent = '开始压测';
+      }
+    }
+
+    function renderLoadResult(result) {
+      const summary = result.summary || {};
+      const successRate = summary.totalRequests
+        ? `${Math.round((summary.successfulRequests / summary.totalRequests) * 10000) / 100}%`
+        : '0%';
+      const metrics = [
+        ['总请求', summary.totalRequests || 0],
+        ['成功率', successRate],
+        ['RPS', summary.requestsPerSecond || 0],
+        ['平均延迟', `${summary.averageLatencyMs || 0} ms`],
+        ['P95 延迟', `${summary.p95LatencyMs || 0} ms`],
+        ['最大延迟', `${summary.maxLatencyMs || 0} ms`],
+      ];
+
+      document.getElementById('load-message').textContent =
+        `目标 ${result.target.url}，并发 ${result.limits.concurrency}，时长 ${result.limits.durationSeconds} 秒。`;
+      document.getElementById('load-metrics').innerHTML = metrics.map(([label, value]) => `
+        <div class="metric">
+          <span class="muted">${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join('');
+      document.getElementById('load-status-counts').textContent =
+        JSON.stringify(summary.statusCounts || {}, null, 2);
+      document.getElementById('load-error-counts').textContent =
+        JSON.stringify(summary.errorCounts || {}, null, 2);
+    }
+
+    async function runConcurrencyTest() {
+      const button = document.getElementById('concurrency-start-btn');
+      const message = document.getElementById('concurrency-message');
+      const payload = {
+        target: document.getElementById('concurrency-target').value.trim(),
+        serverInfo: document.getElementById('concurrency-server-info').value.trim(),
+        totalRequests: Number(document.getElementById('concurrency-total').value),
+        concurrency: Number(document.getElementById('concurrency-level').value),
+      };
+
+      if (!payload.target) {
+        message.textContent = '请填写服务器 IP 或 URL。';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = '测试中';
+      message.textContent = '正在执行并发测试，请等待结果返回。';
+      document.getElementById('concurrency-metrics').innerHTML = '';
+      document.getElementById('concurrency-status-counts').textContent = '-';
+      document.getElementById('concurrency-error-counts').textContent = '-';
+
+      try {
+        const response = await fetch('/api/concurrency-test', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        renderConcurrencyResult(result);
+      } catch (error) {
+        message.textContent = `并发测试失败：${error.message}`;
+      } finally {
+        button.disabled = false;
+        button.textContent = '开始并发测试';
+      }
+    }
+
+    function renderConcurrencyResult(result) {
+      const summary = result.summary || {};
+      const successRate = summary.totalRequests
+        ? `${Math.round((summary.successfulRequests / summary.totalRequests) * 10000) / 100}%`
+        : '0%';
+      const metrics = [
+        ['总请求', summary.totalRequests || 0],
+        ['成功率', successRate],
+        ['完成耗时', `${summary.elapsedMs || 0} ms`],
+        ['RPS', summary.requestsPerSecond || 0],
+        ['平均延迟', `${summary.averageLatencyMs || 0} ms`],
+        ['P95 延迟', `${summary.p95LatencyMs || 0} ms`],
+      ];
+
+      document.getElementById('concurrency-message').textContent =
+        `目标 ${result.target.url}，并发 ${result.limits.concurrency}，总请求 ${result.limits.totalRequests}。`;
+      document.getElementById('concurrency-metrics').innerHTML = metrics.map(([label, value]) => `
+        <div class="metric">
+          <span class="muted">${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join('');
+      document.getElementById('concurrency-status-counts').textContent =
+        JSON.stringify(summary.statusCounts || {}, null, 2);
+      document.getElementById('concurrency-error-counts').textContent =
+        JSON.stringify(summary.errorCounts || {}, null, 2);
+    }
+
+    filters.forEach((id) => document.getElementById(id).addEventListener('input', loadRecords));
+    document.getElementById('load-start-btn').addEventListener('click', runLoadTest);
+    document.getElementById('concurrency-start-btn').addEventListener('click', runConcurrencyTest);
+    document.getElementById('export-btn').addEventListener('click', exportCsv);
+    document.getElementById('import-file').addEventListener('change', importCsv);
+    document.getElementById('edit-form').addEventListener('submit', saveEdit);
+    document.getElementById('cancel-edit').addEventListener('click', () => document.getElementById('edit-dialog').close());
+    loadRecords();
+  </script>
+</body>
+</html>

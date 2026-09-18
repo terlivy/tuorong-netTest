@@ -1,0 +1,3 @@
+data/records.json
+*.log
+node_modules/
