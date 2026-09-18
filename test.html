@@ -147,6 +147,22 @@
       color: var(--muted);
     }
 
+    .notice {
+      margin-top: 10px;
+      border: 1px solid #f2c94c;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff8db;
+      color: #6b4e00;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .inline-button {
+      margin-top: 10px;
+      background: #475569;
+    }
+
     @media (max-width: 560px) {
       main { padding: 14px; }
       h1 { font-size: 21px; }
@@ -163,11 +179,18 @@
 
     <section>
       <h2>测试人员填写</h2>
-      <label for="tester-name">姓名</label>
-      <input id="tester-name" autocomplete="name" placeholder="请输入测试人姓名">
+      <div class="notice">请填写真实号码，否则无法准确解决您的问题。号码和姓名仅作为解决本次问题使用！！！</div>
+
+      <label for="tester-name">姓名（选填）</label>
+      <input id="tester-name" autocomplete="name" placeholder="可填写测试人姓名">
 
       <label for="phone">电话号码</label>
       <input id="phone" inputmode="tel" autocomplete="tel" placeholder="请输入本机或测试手机号">
+
+      <label for="manual-location">所在城市/地区</label>
+      <input id="manual-location" autocomplete="address-level2" placeholder="例如：广州天河、深圳南山">
+      <button class="inline-button" id="location-btn" type="button">授权获取定位</button>
+      <div class="message" id="location-message">定位用于判断是否存在区域性 DNS 污染，可不授权，建议手动填写城市。</div>
 
       <label for="login-result">登录结果</label>
       <select id="login-result">
@@ -222,6 +245,13 @@
       loginResult: '',
       issue: '',
       notes: '',
+      manualLocation: '',
+      latitude: '',
+      longitude: '',
+      locationAccuracy: '',
+      locationAddress: '',
+      locationProvider: '',
+      locationError: '',
       userAgent: navigator.userAgent,
       screen: `${window.screen.width}x${window.screen.height} DPR ${window.devicePixelRatio || 1}`,
       language: navigator.language || '',
@@ -318,18 +348,14 @@
       const message = document.getElementById('message');
       reportData.testerName = document.getElementById('tester-name').value.trim();
       reportData.phone = document.getElementById('phone').value.trim();
+      reportData.manualLocation = document.getElementById('manual-location').value.trim();
       reportData.loginResult = document.getElementById('login-result').value;
       reportData.issue = document.getElementById('issue').value.trim();
       reportData.notes = document.getElementById('notes').value.trim();
       reportData.status = reportData.loginResult === 'success' ? 'resolved' : 'open';
 
-      if (!reportData.testerName) {
-        message.textContent = '请先填写姓名。';
-        return;
-      }
-
       if (!reportData.phone) {
-        message.textContent = '请先填写电话号码。';
+        message.textContent = '请填写真实电话号码，否则无法准确解决您的问题。';
         return;
       }
 
@@ -353,11 +379,55 @@
       }
     }
 
+    async function collectLocation() {
+      const message = document.getElementById('location-message');
+      if (!navigator.geolocation) {
+        reportData.locationError = '当前浏览器不支持定位';
+        message.textContent = reportData.locationError;
+        return;
+      }
+
+      message.textContent = '正在请求定位授权...';
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        reportData.latitude = String(position.coords.latitude);
+        reportData.longitude = String(position.coords.longitude);
+        reportData.locationAccuracy = String(Math.round(position.coords.accuracy || 0));
+        reportData.locationProvider = 'browser';
+        reportData.locationError = '';
+        message.textContent = `已获取定位，精度约 ${reportData.locationAccuracy} 米，正在解析地址...`;
+
+        try {
+          const response = await fetch(`/api/reverse-geocode?lat=${encodeURIComponent(reportData.latitude)}&lng=${encodeURIComponent(reportData.longitude)}`);
+          const result = await response.json();
+          if (response.ok && result.address) {
+            reportData.locationAddress = result.address;
+            message.textContent = `定位地址：${result.address}`;
+          } else {
+            reportData.locationAddress = '';
+            message.textContent = result.configured === false
+              ? '已获取经纬度，高德 Key 未配置，无法解析详细地址。'
+              : `已获取经纬度，地址解析失败：${result.error || '未知错误'}`;
+          }
+        } catch (error) {
+          message.textContent = `已获取经纬度，地址解析请求失败：${error.message}`;
+        }
+      }, (error) => {
+        reportData.locationProvider = 'browser';
+        reportData.locationError = error.message || '定位授权失败';
+        message.textContent = `定位失败：${reportData.locationError}。可以手动填写所在城市/地区。`;
+      }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000,
+      });
+    }
+
     window.addEventListener('load', () => {
       analyzeEnvironment();
       testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic');
       testConnect('target', TARGET_MAIN_SITE, 'ping-target');
       testConnect('googleapis', 'https://www.googleapis.com', 'ping-google');
+      document.getElementById('location-btn').addEventListener('click', collectLocation);
       document.getElementById('submit-btn').addEventListener('click', submitData);
     });
   </script>

@@ -9,6 +9,13 @@ const DEFAULT_DATA_FILE = path.join(ROOT, 'data', 'records.json');
 const CSV_FIELDS = [
   'testerName',
   'phone',
+  'manualLocation',
+  'latitude',
+  'longitude',
+  'locationAccuracy',
+  'locationAddress',
+  'locationProvider',
+  'locationError',
   'brand',
   'model',
   'os',
@@ -166,7 +173,29 @@ async function routeRequest(req, res, context) {
     return;
   }
 
+  if (pathname === '/api/reverse-geocode' && req.method === 'GET') {
+    const lat = clean(url.searchParams.get('lat'));
+    const lng = clean(url.searchParams.get('lng'));
+    const key = clean(process.env.AMAP_KEY);
+    if (!key) {
+      sendJson(res, 503, { configured: false, error: 'AMAP_KEY 未配置' });
+      return;
+    }
+    if (!isCoordinate(lat, 90) || !isCoordinate(lng, 180)) {
+      sendJson(res, 400, { configured: true, error: '经纬度格式不正确' });
+      return;
+    }
+    const result = await reverseGeocodeWithAmap({ lat, lng, key });
+    sendJson(res, result.ok ? 200 : 502, result);
+    return;
+  }
+
   await serveStatic(pathname, res);
+}
+
+function isCoordinate(value, maxAbs) {
+  const number = Number(value);
+  return Number.isFinite(number) && Math.abs(number) <= maxAbs;
 }
 
 function getAllowedLoadHosts() {
@@ -351,6 +380,55 @@ function requestOnce(targetUrl, timeoutMs) {
   });
 }
 
+function reverseGeocodeWithAmap({ lat, lng, key }) {
+  const url = new URL('https://restapi.amap.com/v3/geocode/regeo');
+  url.searchParams.set('key', key);
+  url.searchParams.set('location', `${lng},${lat}`);
+  url.searchParams.set('extensions', 'base');
+  url.searchParams.set('radius', '1000');
+  url.searchParams.set('output', 'json');
+
+  return new Promise((resolve) => {
+    const req = https.request(url, { method: 'GET', timeout: 5000 }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.status !== '1') {
+            resolve({
+              ok: false,
+              configured: true,
+              error: data.info || '高德逆地理解析失败',
+              rawStatus: data.status,
+            });
+            return;
+          }
+          const component = data.regeocode?.addressComponent || {};
+          resolve({
+            ok: true,
+            configured: true,
+            address: data.regeocode?.formatted_address || '',
+            province: component.province || '',
+            city: Array.isArray(component.city) ? '' : component.city || '',
+            district: component.district || '',
+          });
+        } catch (error) {
+          resolve({ ok: false, configured: true, error: error.message });
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (error) => {
+      resolve({ ok: false, configured: true, error: error.message });
+    });
+    req.end();
+  });
+}
+
 function average(values) {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -390,6 +468,13 @@ function normalizeRecord(payload) {
     id: payload.id || crypto.randomUUID(),
     testerName: clean(payload.testerName),
     phone: clean(payload.phone),
+    manualLocation: clean(payload.manualLocation),
+    latitude: clean(payload.latitude),
+    longitude: clean(payload.longitude),
+    locationAccuracy: clean(payload.locationAccuracy),
+    locationAddress: clean(payload.locationAddress),
+    locationProvider: clean(payload.locationProvider),
+    locationError: clean(payload.locationError),
     brand: clean(payload.brand),
     model: clean(payload.model),
     os: clean(payload.os),

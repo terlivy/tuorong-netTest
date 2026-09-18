@@ -45,6 +45,13 @@ test('records can be created, queried by tester name, and updated', async () => 
       body: JSON.stringify({
         testerName: 'Alice',
         phone: '13800138000',
+        manualLocation: 'Guangzhou Tianhe',
+        latitude: '23.1291',
+        longitude: '113.2644',
+        locationAccuracy: '120',
+        locationAddress: 'Guangzhou, Guangdong',
+        locationProvider: 'browser',
+        locationError: '',
         brand: 'Huawei',
         os: 'Android',
         browser: 'Huawei Browser',
@@ -57,9 +64,11 @@ test('records can be created, queried by tester name, and updated', async () => 
     const created = await createdResponse.json();
     assert.equal(created.record.testerName, 'Alice');
     assert.equal(created.record.phone, '13800138000');
+    assert.equal(created.record.manualLocation, 'Guangzhou Tianhe');
+    assert.equal(created.record.locationAddress, 'Guangzhou, Guangdong');
     assert.ok(created.record.id);
 
-    const listResponse = await fetch(`${app.baseUrl}/api/records?query=Alice&brand=Huawei`);
+    const listResponse = await fetch(`${app.baseUrl}/api/records?query=Guangzhou&brand=Huawei`);
     assert.equal(listResponse.status, 200);
     const list = await listResponse.json();
     assert.equal(list.records.length, 1);
@@ -93,6 +102,7 @@ test('records can be exported and imported as csv with tester name', async () =>
       body: JSON.stringify({
         testerName: 'Bob',
         phone: '13900139000',
+        manualLocation: 'Shanghai Pudong',
         brand: 'iPhone',
         os: 'iOS',
         browser: 'Safari',
@@ -104,14 +114,15 @@ test('records can be exported and imported as csv with tester name', async () =>
     const exportResponse = await fetch(`${app.baseUrl}/api/records/export`);
     assert.equal(exportResponse.status, 200);
     const csv = await exportResponse.text();
-    assert.match(csv, /testerName,phone,brand,model,os,browser,status,loginResult,issue,solution/);
+    assert.match(csv, /testerName,phone,manualLocation,latitude,longitude,locationAccuracy,locationAddress,locationProvider,locationError,brand/);
     assert.match(csv, /Bob/);
+    assert.match(csv, /Shanghai Pudong/);
     assert.match(csv, /13900139000/);
 
     const importResponse = await fetch(`${app.baseUrl}/api/records/import`, {
       method: 'POST',
       headers: { 'content-type': 'text/csv' },
-      body: 'testerName,phone,brand,os,browser,status,issue,solution\nCarol,13700137000,Vivo,Android,Vivo Browser,resolved,cannot open,switch network',
+      body: 'testerName,phone,manualLocation,locationAddress,brand,os,browser,status,issue,solution\nCarol,13700137000,Shenzhen Nanshan,Shenzhen Guangdong,Vivo,Android,Vivo Browser,resolved,cannot open,switch network',
     });
     assert.equal(importResponse.status, 200);
     const imported = await importResponse.json();
@@ -121,7 +132,21 @@ test('records can be exported and imported as csv with tester name', async () =>
     const list = await listResponse.json();
     assert.equal(list.records.length, 1);
     assert.equal(list.records[0].phone, '13700137000');
+    assert.equal(list.records[0].manualLocation, 'Shenzhen Nanshan');
+    assert.equal(list.records[0].locationAddress, 'Shenzhen Guangdong');
     assert.equal(list.records[0].solution, 'switch network');
+  } finally {
+    await app.close();
+  }
+});
+
+test('reverse geocode endpoint reports missing amap key without failing records', async () => {
+  const app = await startTestServer();
+  try {
+    const response = await fetch(`${app.baseUrl}/api/reverse-geocode?lat=23.1291&lng=113.2644`);
+    assert.equal(response.status, 503);
+    const result = await response.json();
+    assert.equal(result.configured, false);
   } finally {
     await app.close();
   }

@@ -239,7 +239,7 @@
 <body>
   <header>
     <h1>手机测试记录后台</h1>
-    <p>记录电话号码、手机信息、问题和解决方案，用于定位无法登录国外网站的原因。</p>
+    <p>记录电话号码、位置、手机信息、问题和解决方案，用于定位无法登录国外网站的原因。</p>
   </header>
 
   <main>
@@ -354,6 +354,7 @@
             <th>时间</th>
             <th>姓名</th>
             <th>电话</th>
+            <th>位置</th>
             <th>状态</th>
             <th>手机信息</th>
             <th>登录结果</th>
@@ -380,6 +381,14 @@
         <div>
           <label for="edit-phone">电话号码</label>
           <input id="edit-phone">
+        </div>
+        <div>
+          <label for="edit-manual-location">所在城市/地区</label>
+          <input id="edit-manual-location">
+        </div>
+        <div class="full">
+          <label for="edit-location-address">定位地址</label>
+          <input id="edit-location-address">
         </div>
         <div>
           <label for="edit-status">状态</label>
@@ -434,6 +443,12 @@
       return { open: '待处理', blocked: '阻塞', resolved: '已解决' }[status] || status || '待处理';
     }
 
+    function formatCoordinates(record) {
+      if (!record.latitude || !record.longitude) return '';
+      const accuracy = record.locationAccuracy ? ` / ${record.locationAccuracy}m` : '';
+      return `${record.latitude}, ${record.longitude}${accuracy}`;
+    }
+
     function buildParams() {
       const params = new URLSearchParams();
       filters.forEach((id) => {
@@ -459,6 +474,11 @@
           <td>${escapeHtml(formatDate(record.createdAt))}<br><span class="muted">${escapeHtml(formatDate(record.updatedAt))}</span></td>
           <td>${escapeHtml(record.testerName)}</td>
           <td>${escapeHtml(record.phone)}</td>
+          <td>
+            ${escapeHtml(record.manualLocation)}<br>
+            <span class="muted">${escapeHtml(record.locationAddress)}</span><br>
+            <span class="muted">${escapeHtml(formatCoordinates(record))}</span>
+          </td>
           <td><span class="badge ${escapeHtml(record.status || 'open')}">${escapeHtml(statusLabel(record.status))}</span></td>
           <td>
             ${escapeHtml(record.brand)} ${escapeHtml(record.model)}<br>
@@ -485,6 +505,8 @@
       document.getElementById('edit-id').value = record.id;
       document.getElementById('edit-tester-name').value = record.testerName || '';
       document.getElementById('edit-phone').value = record.phone || '';
+      document.getElementById('edit-manual-location').value = record.manualLocation || '';
+      document.getElementById('edit-location-address').value = record.locationAddress || '';
       document.getElementById('edit-status').value = record.status || 'open';
       document.getElementById('edit-issue').value = record.issue || '';
       document.getElementById('edit-solution').value = record.solution || '';
@@ -501,6 +523,8 @@
         body: JSON.stringify({
           testerName: document.getElementById('edit-tester-name').value,
           phone: document.getElementById('edit-phone').value,
+          manualLocation: document.getElementById('edit-manual-location').value,
+          locationAddress: document.getElementById('edit-location-address').value,
           status: document.getElementById('edit-status').value,
           issue: document.getElementById('edit-issue').value,
           solution: document.getElementById('edit-solution').value,
