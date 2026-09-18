@@ -163,6 +163,9 @@
 
     <section>
       <h2>测试人员填写</h2>
+      <label for="tester-name">姓名</label>
+      <input id="tester-name" autocomplete="name" placeholder="请输入测试人姓名">
+
       <label for="phone">电话号码</label>
       <input id="phone" inputmode="tel" autocomplete="tel" placeholder="请输入本机或测试手机号">
 
@@ -210,6 +213,7 @@
     const TARGET_MAIN_SITE = 'https://studio.atlascapture.io/capture?code=';
     const recordsApi = '/api/records';
     const reportData = {
+      testerName: '',
       phone: '',
       os: '未知',
       brand: '通用/其他',
@@ -312,11 +316,17 @@
     async function submitData() {
       const button = document.getElementById('submit-btn');
       const message = document.getElementById('message');
+      reportData.testerName = document.getElementById('tester-name').value.trim();
       reportData.phone = document.getElementById('phone').value.trim();
       reportData.loginResult = document.getElementById('login-result').value;
       reportData.issue = document.getElementById('issue').value.trim();
       reportData.notes = document.getElementById('notes').value.trim();
       reportData.status = reportData.loginResult === 'success' ? 'resolved' : 'open';
+
+      if (!reportData.testerName) {
+        message.textContent = '请先填写姓名。';
+        return;
+      }
 
       if (!reportData.phone) {
         message.textContent = '请先填写电话号码。';

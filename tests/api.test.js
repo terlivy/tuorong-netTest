@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -25,62 +26,77 @@ async function startTestServer() {
   };
 }
 
-test('records can be created, queried, and updated', async () => {
+async function startTargetServer(handler) {
+  const server = http.createServer(handler);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return server;
+}
+
+async function closeServer(server) {
+  await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+}
+
+test('records can be created, queried by tester name, and updated', async () => {
   const app = await startTestServer();
   try {
     const createdResponse = await fetch(`${app.baseUrl}/api/records`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        testerName: 'Alice',
         phone: '13800138000',
         brand: 'Huawei',
         os: 'Android',
         browser: 'Huawei Browser',
-        issue: '验证码加载失败',
+        issue: 'captcha failed',
         loginResult: 'failed',
         solution: '',
       }),
     });
     assert.equal(createdResponse.status, 201);
     const created = await createdResponse.json();
+    assert.equal(created.record.testerName, 'Alice');
     assert.equal(created.record.phone, '13800138000');
     assert.ok(created.record.id);
 
-    const listResponse = await fetch(`${app.baseUrl}/api/records?query=验证码&brand=Huawei`);
+    const listResponse = await fetch(`${app.baseUrl}/api/records?query=Alice&brand=Huawei`);
     assert.equal(listResponse.status, 200);
     const list = await listResponse.json();
     assert.equal(list.records.length, 1);
-    assert.equal(list.records[0].issue, '验证码加载失败');
+    assert.equal(list.records[0].issue, 'captcha failed');
 
     const updateResponse = await fetch(`${app.baseUrl}/api/records/${created.record.id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        testerName: 'Alice Zhang',
         status: 'resolved',
-        solution: '改用 Chrome 后可以登录',
+        solution: 'Chrome works',
       }),
     });
     assert.equal(updateResponse.status, 200);
     const updated = await updateResponse.json();
+    assert.equal(updated.record.testerName, 'Alice Zhang');
     assert.equal(updated.record.status, 'resolved');
-    assert.equal(updated.record.solution, '改用 Chrome 后可以登录');
+    assert.equal(updated.record.solution, 'Chrome works');
   } finally {
     await app.close();
   }
 });
 
-test('records can be exported and imported as csv', async () => {
+test('records can be exported and imported as csv with tester name', async () => {
   const app = await startTestServer();
   try {
     await fetch(`${app.baseUrl}/api/records`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        testerName: 'Bob',
         phone: '13900139000',
         brand: 'iPhone',
         os: 'iOS',
         browser: 'Safari',
-        issue: '页面空白',
+        issue: 'blank page',
         status: 'open',
       }),
     });
@@ -88,34 +104,33 @@ test('records can be exported and imported as csv', async () => {
     const exportResponse = await fetch(`${app.baseUrl}/api/records/export`);
     assert.equal(exportResponse.status, 200);
     const csv = await exportResponse.text();
-    assert.match(csv, /phone,brand,model,os,browser,status,loginResult,issue,solution/);
+    assert.match(csv, /testerName,phone,brand,model,os,browser,status,loginResult,issue,solution/);
+    assert.match(csv, /Bob/);
     assert.match(csv, /13900139000/);
 
     const importResponse = await fetch(`${app.baseUrl}/api/records/import`, {
       method: 'POST',
       headers: { 'content-type': 'text/csv' },
-      body: 'phone,brand,os,browser,status,issue,solution\n13700137000,Vivo,Android,Vivo Browser,resolved,无法打开,切换网络',
+      body: 'testerName,phone,brand,os,browser,status,issue,solution\nCarol,13700137000,Vivo,Android,Vivo Browser,resolved,cannot open,switch network',
     });
     assert.equal(importResponse.status, 200);
     const imported = await importResponse.json();
     assert.equal(imported.imported, 1);
 
-    const listResponse = await fetch(`${app.baseUrl}/api/records?query=13700137000`);
+    const listResponse = await fetch(`${app.baseUrl}/api/records?query=Carol`);
     const list = await listResponse.json();
     assert.equal(list.records.length, 1);
-    assert.equal(list.records[0].solution, '切换网络');
+    assert.equal(list.records[0].phone, '13700137000');
+    assert.equal(list.records[0].solution, 'switch network');
   } finally {
     await app.close();
   }
 });
 
 test('load test endpoint measures an allowed target', async () => {
-  const target = await new Promise((resolve) => {
-    const server = require('node:http').createServer((req, res) => {
-      res.writeHead(200, { 'content-type': 'text/plain' });
-      res.end('ok');
-    });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+  const target = await startTargetServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('ok');
   });
   const { port } = target.address();
   const app = await startTestServer();
@@ -141,7 +156,7 @@ test('load test endpoint measures an allowed target', async () => {
     assert.equal(result.summary.statusCounts['200'] > 0, true);
   } finally {
     await app.close();
-    await new Promise((resolve, reject) => target.close((error) => (error ? reject(error) : resolve())));
+    await closeServer(target);
   }
 });
 
@@ -166,14 +181,11 @@ test('load test endpoint rejects targets outside the allowed host list', async (
 });
 
 test('concurrency test endpoint runs a fixed request count', async () => {
-  const target = await new Promise((resolve) => {
-    const server = require('node:http').createServer((req, res) => {
-      setTimeout(() => {
-        res.writeHead(200, { 'content-type': 'text/plain' });
-        res.end('ok');
-      }, 5);
-    });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+  const target = await startTargetServer((req, res) => {
+    setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    }, 5);
   });
   const { port } = target.address();
   const app = await startTestServer();
@@ -199,6 +211,6 @@ test('concurrency test endpoint runs a fixed request count', async () => {
     assert.equal(result.limits.concurrency, 4);
   } finally {
     await app.close();
-    await new Promise((resolve, reject) => target.close((error) => (error ? reject(error) : resolve())));
+    await closeServer(target);
   }
 });

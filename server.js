@@ -7,6 +7,7 @@ const path = require('node:path');
 const ROOT = __dirname;
 const DEFAULT_DATA_FILE = path.join(ROOT, 'data', 'records.json');
 const CSV_FIELDS = [
+  'testerName',
   'phone',
   'brand',
   'model',
@@ -387,6 +388,7 @@ function normalizeRecord(payload) {
   const now = new Date().toISOString();
   return {
     id: payload.id || crypto.randomUUID(),
+    testerName: clean(payload.testerName),
     phone: clean(payload.phone),
     brand: clean(payload.brand),
     model: clean(payload.model),

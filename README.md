@@ -1,6 +1,6 @@
 # 手机登录问题测试记录系统
 
-这个项目用于批量测试手机访问国外登录页面的问题，记录电话号码、手机信息、问题描述和解决方案。
+这个项目用于批量测试手机访问国外登录页面的问题，记录测试人姓名、电话号码、手机信息、问题描述和解决方案。
 
 ## 页面
 
@@ -73,7 +73,7 @@ data/records.json
 后台支持导入 CSV，推荐表头：
 
 ```csv
-phone,brand,model,os,browser,status,loginResult,issue,solution,networkSummary,targetUrl,userAgent,screen,language,timezone,notes,createdAt,updatedAt
+testerName,phone,brand,model,os,browser,status,loginResult,issue,solution,networkSummary,targetUrl,userAgent,screen,language,timezone,notes,createdAt,updatedAt
 ```
 
 `status` 可填写：

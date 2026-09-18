@@ -318,7 +318,7 @@
     <div class="toolbar">
       <div>
         <label for="query">关键词</label>
-        <input id="query" placeholder="手机号、问题、方案、浏览器">
+        <input id="query" placeholder="姓名、手机号、问题、方案、浏览器">
       </div>
       <div>
         <label for="status">状态</label>
@@ -352,6 +352,7 @@
         <thead>
           <tr>
             <th>时间</th>
+            <th>姓名</th>
             <th>电话</th>
             <th>状态</th>
             <th>手机信息</th>
@@ -372,6 +373,10 @@
       <h2>编辑记录</h2>
       <input type="hidden" id="edit-id">
       <div class="dialog-grid">
+        <div>
+          <label for="edit-tester-name">姓名</label>
+          <input id="edit-tester-name">
+        </div>
         <div>
           <label for="edit-phone">电话号码</label>
           <input id="edit-phone">
@@ -452,6 +457,7 @@
       body.innerHTML = state.records.map((record) => `
         <tr>
           <td>${escapeHtml(formatDate(record.createdAt))}<br><span class="muted">${escapeHtml(formatDate(record.updatedAt))}</span></td>
+          <td>${escapeHtml(record.testerName)}</td>
           <td>${escapeHtml(record.phone)}</td>
           <td><span class="badge ${escapeHtml(record.status || 'open')}">${escapeHtml(statusLabel(record.status))}</span></td>
           <td>
@@ -477,6 +483,7 @@
       const record = state.records.find((item) => item.id === id);
       if (!record) return;
       document.getElementById('edit-id').value = record.id;
+      document.getElementById('edit-tester-name').value = record.testerName || '';
       document.getElementById('edit-phone').value = record.phone || '';
       document.getElementById('edit-status').value = record.status || 'open';
       document.getElementById('edit-issue').value = record.issue || '';
@@ -492,6 +499,7 @@
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          testerName: document.getElementById('edit-tester-name').value,
           phone: document.getElementById('edit-phone').value,
           status: document.getElementById('edit-status').value,
           issue: document.getElementById('edit-issue').value,
