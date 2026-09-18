@@ -401,6 +401,14 @@
           <select id="edit-browser"></select>
         </div>
         <div>
+          <label for="edit-carrier">运营商</label>
+          <select id="edit-carrier"></select>
+        </div>
+        <div>
+          <label for="edit-network-class">网络情况</label>
+          <select id="edit-network-class"></select>
+        </div>
+        <div>
           <label for="edit-status">状态</label>
           <select id="edit-status">
             <option value="open">待处理</option>
@@ -455,9 +463,13 @@
       const brands = collectDistinctValues(state.records, 'brand');
       const oses = collectDistinctValues(state.records, 'os');
       const browsers = collectDistinctValues(state.records, 'browser');
+      const carriers = collectDistinctValues(state.records, 'carrier');
+      const networkClasses = collectDistinctValues(state.records, 'networkClass');
       renderSelectOptions(document.getElementById('edit-brand'), brands, '');
       renderSelectOptions(document.getElementById('edit-os'), oses, '');
       renderSelectOptions(document.getElementById('edit-browser'), browsers, '');
+      renderSelectOptions(document.getElementById('edit-carrier'), carriers, '');
+      renderSelectOptions(document.getElementById('edit-network-class'), networkClasses, '');
     }
     const filters = ['query', 'status', 'brand', 'os', 'browser'];
 
@@ -523,6 +535,7 @@
           <td>
             ${escapeHtml(record.brand)} ${escapeHtml(record.model)}<br>
             <span class="muted">${escapeHtml(record.os)} / ${escapeHtml(record.browser)}</span><br>
+            <span class="muted">${escapeHtml(record.carrier || '')}${record.carrier && record.networkClass ? ' · ' : ''}${escapeHtml(record.networkClass || '')}</span><br>
             <span class="muted">${escapeHtml(record.screen)}</span>
           </td>
           <td>${escapeHtml(record.loginResult)}</td>
@@ -550,6 +563,8 @@
       renderSelectOptions(document.getElementById('edit-brand'), collectDistinctValues(state.records, 'brand'), record.brand || '');
       renderSelectOptions(document.getElementById('edit-os'), collectDistinctValues(state.records, 'os'), record.os || '');
       renderSelectOptions(document.getElementById('edit-browser'), collectDistinctValues(state.records, 'browser'), record.browser || '');
+      renderSelectOptions(document.getElementById('edit-carrier'), collectDistinctValues(state.records, 'carrier'), record.carrier || '');
+      renderSelectOptions(document.getElementById('edit-network-class'), collectDistinctValues(state.records, 'networkClass'), record.networkClass || '');
       document.getElementById('edit-status').value = record.status || 'open';
       document.getElementById('edit-issue').value = record.issue || '';
       document.getElementById('edit-solution').value = record.solution || '';
@@ -571,6 +586,8 @@
           brand: document.getElementById('edit-brand').value,
           os: document.getElementById('edit-os').value,
           browser: document.getElementById('edit-browser').value,
+          carrier: document.getElementById('edit-carrier').value,
+          networkClass: document.getElementById('edit-network-class').value,
           status: document.getElementById('edit-status').value,
           issue: document.getElementById('edit-issue').value,
           solution: document.getElementById('edit-solution').value,

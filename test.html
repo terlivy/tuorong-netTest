@@ -253,6 +253,8 @@
       networkRtt: '',
       networkType: '',
       networkSaveData: '',
+      carrier: '',
+      networkClass: '',
       targetUrl: TARGET_MAIN_SITE,
       diagnostics: {},
     };
@@ -299,6 +301,31 @@
       return '';
     }
 
+    function detectCarrier(ispName) {
+      if (!ispName) return '';
+      const upper = ispName.toUpperCase();
+      if (upper.includes('UNICOM') || upper.includes('联通')) return '联通';
+      if (upper.includes('MOBILE') || upper.includes('移动')) return '移动';
+      if (upper.includes('TELECOM') || upper.includes('电信') || upper.includes('CHINANET')) return '电信';
+      if (upper.includes('BROADNET') || upper.includes('广电')) return '广电';
+      if (upper.includes('CERNET') || upper.includes('教育网')) return '教育网';
+      return ispName;
+    }
+
+    function buildNetworkClass(effectiveType, type) {
+      if (type === 'wifi') return 'WiFi';
+      if (type === 'ethernet') return '有线网络';
+      if (type === 'wimax') return 'WiMax';
+      if (type === 'bluetooth') return '蓝牙';
+      const cellMap = { '5g': '5G 蜂窝', '4g': '4G 蜂窝', '3g': '3G 蜂窝', '2g': '2G 蜂窝', 'slow-2g': '慢速 2G' };
+      if (type === 'cellular' && effectiveType && cellMap[effectiveType]) return cellMap[effectiveType];
+      if (type === 'cellular') return '蜂窝网络';
+      const plainMap = { '5g': '5G', '4g': '4G', '3g': '3G', '2g': '2G', 'slow-2g': '慢速 2G' };
+      if (effectiveType && plainMap[effectiveType]) return plainMap[effectiveType];
+      if (type) return type;
+      return '';
+    }
+
     function analyzeEnvironment() {
       const ua = navigator.userAgent;
       const uaLower = ua.toLowerCase();
@@ -326,6 +353,7 @@
         reportData.networkRtt = Number.isFinite(connection.rtt) ? `${connection.rtt} ms` : '';
         reportData.networkType = connection.type || '';
         reportData.networkSaveData = connection.saveData ? '开启' : '关闭';
+        reportData.networkClass = buildNetworkClass(reportData.networkEffectiveType, reportData.networkType);
       }
     }
 
@@ -340,6 +368,7 @@
         reportData.ipCountry = data.ipCountry || '';
         reportData.ipRegion = data.ipRegion || '';
         reportData.ipCity = data.ipCity || '';
+        reportData.carrier = detectCarrier(reportData.ispName);
       } catch (error) {
         // 静默失败，不阻塞主流程
       }
