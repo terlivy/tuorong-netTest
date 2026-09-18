@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
+const fsPromises = require('node:fs/promises');
 const http = require('node:http');
 const https = require('node:https');
 const path = require('node:path');
@@ -37,19 +38,21 @@ const CSV_FIELDS = [
 
 function createApp(options = {}) {
   const dataFile = options.dataFile || DEFAULT_DATA_FILE;
-  const allowedLoadHosts = options.allowedLoadHosts || getAllowedLoadHosts();
 
   return http.createServer(async (req, res) => {
+    const start = Date.now();
     try {
-      await routeRequest(req, res, { dataFile, allowedLoadHosts });
+      await routeRequest(req, res, { dataFile });
     } catch (error) {
       sendJson(res, 500, { error: '服务器内部错误', detail: error.message });
+    } finally {
+      writeAccessLog(req, res, Date.now() - start);
     }
   });
 }
 
 async function routeRequest(req, res, context) {
-  const { dataFile, allowedLoadHosts } = context;
+  const { dataFile } = context;
   const url = new URL(req.url, 'http://localhost');
   const pathname = decodeURIComponent(url.pathname);
 
@@ -119,57 +122,10 @@ async function routeRequest(req, res, context) {
     return;
   }
 
-  if (pathname === '/api/load-test' && req.method === 'POST') {
-    const body = await readBody(req);
-    const payload = parseJson(body);
-    const target = normalizeTargetUrl(payload.target);
-    if (!target.ok) {
-      sendJson(res, 400, { error: target.error });
-      return;
-    }
-    if (!allowedLoadHosts.has(target.url.hostname)) {
-      sendJson(res, 403, {
-        error: `目标 ${target.url.hostname} 不在允许压测名单中`,
-        allowedHosts: [...allowedLoadHosts],
-      });
-      return;
-    }
-
-    const result = await runLoadTest({
-      targetUrl: target.url,
-      serverInfo: clean(payload.serverInfo),
-      durationSeconds: clampNumber(payload.durationSeconds, 1, 60, 10),
-      concurrency: clampNumber(payload.concurrency, 1, 50, 5),
-      timeoutMs: 5000,
-    });
-    sendJson(res, 200, result);
-    return;
-  }
-
-  if (pathname === '/api/concurrency-test' && req.method === 'POST') {
-    const body = await readBody(req);
-    const payload = parseJson(body);
-    const target = normalizeTargetUrl(payload.target);
-    if (!target.ok) {
-      sendJson(res, 400, { error: target.error });
-      return;
-    }
-    if (!allowedLoadHosts.has(target.url.hostname)) {
-      sendJson(res, 403, {
-        error: `目标 ${target.url.hostname} 不在允许压测名单中`,
-        allowedHosts: [...allowedLoadHosts],
-      });
-      return;
-    }
-
-    const result = await runConcurrencyTest({
-      targetUrl: target.url,
-      serverInfo: clean(payload.serverInfo),
-      totalRequests: clampNumber(payload.totalRequests, 1, 1000, 100),
-      concurrency: clampNumber(payload.concurrency, 1, 100, 10),
-      timeoutMs: 5000,
-    });
-    sendJson(res, 200, result);
+  if (pathname === '/api/access/summary' && req.method === 'GET') {
+    const days = clampNumber(url.searchParams.get('days'), 1, 365, 30);
+    const summary = await buildAccessSummary(days);
+    sendJson(res, 200, summary);
     return;
   }
 
@@ -198,186 +154,158 @@ function isCoordinate(value, maxAbs) {
   return Number.isFinite(number) && Math.abs(number) <= maxAbs;
 }
 
-function getAllowedLoadHosts() {
-  const configured = clean(process.env.LOAD_TEST_ALLOWED_HOSTS);
-  const hosts = configured ? configured.split(',') : ['42.192.109.248', '127.0.0.1', 'localhost'];
-  return new Set(hosts.map((host) => host.trim()).filter(Boolean));
-}
-
-function normalizeTargetUrl(value) {
-  const raw = clean(value);
-  if (!raw) return { ok: false, error: '请填写压测目标 IP 或 URL' };
-
-  try {
-    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`);
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      return { ok: false, error: '压测目标只支持 HTTP 或 HTTPS' };
-    }
-    if (!url.pathname) url.pathname = '/';
-    return { ok: true, url };
-  } catch {
-    return { ok: false, error: '压测目标格式不正确' };
-  }
-}
-
 function clampNumber(value, min, max, fallback) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(number)));
 }
 
-async function runLoadTest({ targetUrl, serverInfo, durationSeconds, concurrency, timeoutMs }) {
-  const startedAtMs = Date.now();
-  const deadline = startedAtMs + durationSeconds * 1000;
-  const samples = [];
-  const statusCounts = {};
-  const errorCounts = {};
-
-  async function worker() {
-    while (Date.now() < deadline) {
-      const result = await requestOnce(targetUrl, timeoutMs);
-      samples.push(result);
-      if (result.statusCode) {
-        const key = String(result.statusCode);
-        statusCounts[key] = (statusCounts[key] || 0) + 1;
-      }
-      if (result.error) {
-        errorCounts[result.error] = (errorCounts[result.error] || 0) + 1;
-      }
-    }
+function clientIpFor(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) {
+    const first = String(xff).split(',')[0].trim();
+    if (first) return first;
   }
-
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  const endedAtMs = Date.now();
-  const latencies = samples.map((sample) => sample.latencyMs).sort((a, b) => a - b);
-  const totalRequests = samples.length;
-  const successfulRequests = samples.filter((sample) => sample.ok).length;
-  const failedRequests = totalRequests - successfulRequests;
-  const elapsedSeconds = Math.max((endedAtMs - startedAtMs) / 1000, 0.001);
-
-  return {
-    mode: 'duration-load-test',
-    target: {
-      url: targetUrl.toString(),
-      host: targetUrl.hostname,
-      port: targetUrl.port || (targetUrl.protocol === 'https:' ? '443' : '80'),
-      path: `${targetUrl.pathname}${targetUrl.search}`,
-    },
-    serverInfo,
-    limits: { durationSeconds, concurrency, timeoutMs },
-    startedAt: new Date(startedAtMs).toISOString(),
-    endedAt: new Date(endedAtMs).toISOString(),
-    summary: {
-      totalRequests,
-      successfulRequests,
-      failedRequests,
-      requestsPerSecond: round(totalRequests / elapsedSeconds),
-      averageLatencyMs: round(average(latencies)),
-      minLatencyMs: latencies[0] || 0,
-      maxLatencyMs: latencies[latencies.length - 1] || 0,
-      p95LatencyMs: percentile(latencies, 0.95),
-      statusCounts,
-      errorCounts,
-    },
-  };
+  const xReal = req.headers['x-real-ip'];
+  if (xReal) return String(xReal).trim();
+  return req.socket.remoteAddress || '';
 }
 
-async function runConcurrencyTest({ targetUrl, serverInfo, totalRequests, concurrency, timeoutMs }) {
-  const startedAtMs = Date.now();
-  const samples = [];
-  const statusCounts = {};
-  const errorCounts = {};
-  let issuedRequests = 0;
+const ACCESS_LOG_PREFIX = 'access-';
+const ACCESS_LOG_EXT = '.jsonl';
 
-  async function worker() {
-    while (issuedRequests < totalRequests) {
-      issuedRequests += 1;
-      const result = await requestOnce(targetUrl, timeoutMs);
-      samples.push(result);
-      if (result.statusCode) {
-        const key = String(result.statusCode);
-        statusCounts[key] = (statusCounts[key] || 0) + 1;
-      }
-      if (result.error) {
-        errorCounts[result.error] = (errorCounts[result.error] || 0) + 1;
-      }
+let accessLogStream = null;
+let accessLogDate = '';
+
+function getAccessLogStream() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== accessLogDate || !accessLogStream) {
+    if (accessLogStream) {
+      try { accessLogStream.end(); } catch (e) { /* ignore */ }
     }
-  }
-
-  const workerCount = Math.min(concurrency, totalRequests);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  const endedAtMs = Date.now();
-  const latencies = samples.map((sample) => sample.latencyMs).sort((a, b) => a - b);
-  const successfulRequests = samples.filter((sample) => sample.ok).length;
-  const failedRequests = samples.length - successfulRequests;
-  const elapsedMs = Math.max(endedAtMs - startedAtMs, 1);
-
-  return {
-    mode: 'fixed-request-concurrency',
-    target: {
-      url: targetUrl.toString(),
-      host: targetUrl.hostname,
-      port: targetUrl.port || (targetUrl.protocol === 'https:' ? '443' : '80'),
-      path: `${targetUrl.pathname}${targetUrl.search}`,
-    },
-    serverInfo,
-    limits: { totalRequests, concurrency: workerCount, timeoutMs },
-    startedAt: new Date(startedAtMs).toISOString(),
-    endedAt: new Date(endedAtMs).toISOString(),
-    summary: {
-      totalRequests: samples.length,
-      successfulRequests,
-      failedRequests,
-      elapsedMs,
-      requestsPerSecond: round(samples.length / (elapsedMs / 1000)),
-      averageLatencyMs: round(average(latencies)),
-      minLatencyMs: latencies[0] || 0,
-      maxLatencyMs: latencies[latencies.length - 1] || 0,
-      p95LatencyMs: percentile(latencies, 0.95),
-      statusCounts,
-      errorCounts,
-    },
-  };
-}
-
-function requestOnce(targetUrl, timeoutMs) {
-  const startedAt = Date.now();
-  const client = targetUrl.protocol === 'https:' ? https : http;
-
-  return new Promise((resolve) => {
-    const req = client.request(
-      targetUrl,
-      {
-        method: 'GET',
-        timeout: timeoutMs,
-        headers: {
-          'user-agent': 'phone-test-collector-load-test/1.0',
-          connection: 'close',
-        },
-      },
-      (response) => {
-        response.resume();
-        response.on('end', () => {
-          const latencyMs = Date.now() - startedAt;
-          resolve({
-            ok: response.statusCode >= 200 && response.statusCode < 500,
-            statusCode: response.statusCode,
-            latencyMs,
-          });
-        });
-      },
+    accessLogDate = today;
+    accessLogStream = fs.createWriteStream(
+      path.join(ROOT, 'data', `${ACCESS_LOG_PREFIX}${today}${ACCESS_LOG_EXT}`),
+      { flags: 'a' },
     );
-
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', (error) => {
-      resolve({
-        ok: false,
-        error: error.message || 'request_error',
-        latencyMs: Date.now() - startedAt,
-      });
+    accessLogStream.on('error', (error) => {
+      console.error('access log write error', error.message);
     });
-    req.end();
+  }
+  return accessLogStream;
+}
+
+function writeAccessLog(req, res, durationMs) {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      method: req.method,
+      path: String(req.url || '').split('?')[0],
+      status: res.statusCode,
+      durationMs,
+      ip: clientIpFor(req),
+      ua: String(req.headers['user-agent'] || '').slice(0, 200),
+    };
+    const stream = getAccessLogStream();
+    stream.write(JSON.stringify(entry) + '\n');
+  } catch (err) {
+    console.error('access log error', err.message);
+  }
+}
+
+async function buildAccessSummary(days) {
+  const dataDir = path.join(ROOT, 'data');
+  let files;
+  try {
+    files = await fsPromises.readdir(dataDir);
+  } catch (err) {
+    return { days: 0, requestedDays: days, daily: [] };
+  }
+  const cutoff = Date.now() - (days - 1) * 24 * 60 * 60 * 1000;
+  const cutoffDate = new Date(cutoff).toISOString().slice(0, 10);
+
+  const dailyMap = new Map();
+  for (const name of files) {
+    if (!name.startsWith(ACCESS_LOG_PREFIX) || !name.endsWith(ACCESS_LOG_EXT)) continue;
+    const date = name.slice(ACCESS_LOG_PREFIX.length, -ACCESS_LOG_EXT.length);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < cutoffDate) continue;
+    let text;
+    try {
+      text = await fsPromises.readFile(path.join(dataDir, name), 'utf8');
+    } catch (err) {
+      continue;
+    }
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let entry;
+      try {
+        entry = JSON.parse(trimmed);
+      } catch (err) {
+        continue;
+      }
+      const day = (entry.ts || '').slice(0, 10);
+      if (day !== date) continue;
+      let bucket = dailyMap.get(day);
+      if (!bucket) {
+        bucket = {
+          date: day,
+          total: 0,
+          success2xx: 0,
+          success3xx: 0,
+          clientErrors: 0,
+          serverErrors: 0,
+          ips: new Set(),
+          latencies: [],
+          statusCounts: {},
+          methodCounts: {},
+          pathCounts: {},
+        };
+        dailyMap.set(day, bucket);
+      }
+      bucket.total += 1;
+      const status = Number(entry.status) || 0;
+      bucket.statusCounts[status] = (bucket.statusCounts[status] || 0) + 1;
+      if (status >= 200 && status < 300) bucket.success2xx += 1;
+      else if (status >= 300 && status < 400) bucket.success3xx += 1;
+      else if (status >= 400 && status < 500) bucket.clientErrors += 1;
+      else if (status >= 500) bucket.serverErrors += 1;
+      if (entry.ip) bucket.ips.add(entry.ip);
+      if (Number.isFinite(entry.durationMs)) bucket.latencies.push(entry.durationMs);
+      const m = entry.method || 'GET';
+      bucket.methodCounts[m] = (bucket.methodCounts[m] || 0) + 1;
+      const p = entry.path || '';
+      if (p) bucket.pathCounts[p] = (bucket.pathCounts[p] || 0) + 1;
+    }
+  }
+
+  const daily = [...dailyMap.values()].sort((a, b) => a.date.localeCompare(b.date)).map((b) => {
+    const latencies = b.latencies.sort((x, y) => x - y);
+    const errors = b.serverErrors + b.clientErrors;
+    const errorRate = b.total ? errors / b.total : 0;
+    const topPaths = Object.entries(b.pathCounts)
+      .sort((x, y) => y[1] - x[1])
+      .slice(0, 5)
+      .map(([p, n]) => ({ path: p, count: n }));
+    return {
+      date: b.date,
+      total: b.total,
+      success2xx: b.success2xx,
+      success3xx: b.success3xx,
+      clientErrors: b.clientErrors,
+      serverErrors: b.serverErrors,
+      errorRate: Math.round(errorRate * 10000) / 10000,
+      uniqueIps: b.ips.size,
+      averageLatencyMs: latencies.length ? Math.round(latencies.reduce((s, v) => s + v, 0) / latencies.length) : 0,
+      p95LatencyMs: latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] : 0,
+      maxLatencyMs: latencies.length ? latencies[latencies.length - 1] : 0,
+      statusCounts: b.statusCounts,
+      methodCounts: b.methodCounts,
+      topPaths,
+    };
   });
+
+  return { days: daily.length, requestedDays: days, daily };
 }
 
 function reverseGeocodeWithAmap({ lat, lng, key }) {
@@ -429,24 +357,10 @@ function reverseGeocodeWithAmap({ lat, lng, key }) {
   });
 }
 
-function average(values) {
-  if (!values.length) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function percentile(values, ratio) {
-  if (!values.length) return 0;
-  const index = Math.min(values.length - 1, Math.ceil(values.length * ratio) - 1);
-  return values[index];
-}
-
-function round(value) {
-  return Math.round(value * 100) / 100;
-}
 
 async function readRecords(dataFile) {
   try {
-    const raw = await fs.readFile(dataFile, 'utf8');
+    const raw = await fsPromises.readFile(dataFile, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
@@ -456,10 +370,10 @@ async function readRecords(dataFile) {
 }
 
 async function writeRecords(dataFile, records) {
-  await fs.mkdir(path.dirname(dataFile), { recursive: true });
+  await fsPromises.mkdir(path.dirname(dataFile), { recursive: true });
   const tempFile = `${dataFile}.${process.pid}.tmp`;
-  await fs.writeFile(tempFile, `${JSON.stringify(records, null, 2)}\n`, 'utf8');
-  await fs.rename(tempFile, dataFile);
+  await fsPromises.writeFile(tempFile, `${JSON.stringify(records, null, 2)}\n`, 'utf8');
+  await fsPromises.rename(tempFile, dataFile);
 }
 
 function normalizeRecord(payload) {
@@ -624,7 +538,7 @@ async function serveStatic(pathname, res) {
   }
 
   try {
-    const content = await fs.readFile(resolved);
+    const content = await fsPromises.readFile(resolved);
     const ext = path.extname(resolved).toLowerCase();
     const type = ext === '.html'
       ? 'text/html; charset=utf-8'
