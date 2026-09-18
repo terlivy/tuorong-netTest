@@ -626,7 +626,11 @@ async function serveStatic(pathname, res) {
   try {
     const content = await fs.readFile(resolved);
     const ext = path.extname(resolved).toLowerCase();
-    const type = ext === '.html' ? 'text/html; charset=utf-8' : 'application/octet-stream';
+    const type = ext === '.html'
+      ? 'text/html; charset=utf-8'
+      : ext === '.json'
+        ? 'application/json; charset=utf-8'
+        : 'application/octet-stream';
     res.writeHead(200, { 'content-type': type });
     res.end(content);
   } catch (error) {
