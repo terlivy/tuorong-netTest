@@ -174,7 +174,7 @@
   <main>
     <header>
       <h1>手机登录问题测试</h1>
-      <p>请在发生无法登录时填写手机号并提交，系统会自动记录手机、浏览器和网络诊断信息。</p>
+      <p>请在发生无法登录时，填写手机号并提交，系统会自动记录手机、浏览器、网络和网络诊断信息等相关信息，技术会加急处理。</p>
     </header>
 
     <section>
@@ -193,12 +193,12 @@
       </select>
 
       <label for="city">所在城市</label>
-      <select id="city" hidden>
+      <select id="city">
         <option value="">请选择城市</option>
       </select>
 
       <label for="district">所在区/县</label>
-      <select id="district" hidden>
+      <select id="district">
         <option value="">请选择区/县</option>
       </select>
 
@@ -405,7 +405,7 @@
       reportData.networkSummary = [domesticResult, targetResult, googleapisResult]
         .map((value) => `${value.url}:${value.ok ? `${value.duration}ms` : value.reason}`)
         .join('; ');
-      reportData.loginResult = targetResult.ok ? 'success' : 'failed';
+      reportData.loginResult = targetResult.ok ? '成功' : '失败';
       reportData.status = targetResult.ok ? 'resolved' : 'open';
       reportData.issue = targetResult.ok ? '目标登录地址可访问' : '目标登录地址无法访问';
       reportData.notes = targetResult.ok ? '用户端自动检测通过' : '用户端自动检测失败，等待技术服务处理';
@@ -484,27 +484,21 @@
       province.addEventListener('change', () => {
         const [code] = province.value.split('|');
         if (!code || !areas[code] || Object.keys(areas[code]).length === 0) {
-          city.hidden = true;
           city.innerHTML = '<option value="">请选择城市</option>';
-          district.hidden = true;
           district.innerHTML = '<option value="">请选择区/县</option>';
           return;
         }
         city.innerHTML = optionsHtml(Object.entries(areas[code]));
-        city.hidden = false;
-        district.hidden = true;
         district.innerHTML = '<option value="">请选择区/县</option>';
       });
 
       city.addEventListener('change', () => {
         const [code] = city.value.split('|');
         if (!code || !areas[code] || Object.keys(areas[code]).length === 0) {
-          district.hidden = true;
           district.innerHTML = '<option value="">请选择区/县</option>';
           return;
         }
         district.innerHTML = optionsHtml(Object.entries(areas[code]));
-        district.hidden = false;
       });
     }
 
