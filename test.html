@@ -212,6 +212,9 @@
       <div class="item"><span class="label">国内基础网络</span><span class="value"><span class="status testing" id="ping-domestic">待测试</span></span></div>
       <div class="item"><span class="label">目标网站 studio.atlascapture.io</span><span class="value"><span class="status testing" id="ping-target">待测试</span></span></div>
       <div class="item"><span class="label">海外公共依赖</span><span class="value"><span class="status testing" id="ping-google">待测试</span></span></div>
+      <div class="item"><span class="label">DNS 解析 aliyun.com</span><span class="value"><span class="status testing" id="dns-domestic">待测试</span></span></div>
+      <div class="item"><span class="label">DNS 解析 studio.atlascapture.io</span><span class="value"><span class="status testing" id="dns-target">待测试</span></span></div>
+      <div class="item"><span class="label">DNS 解析 googleapis.com</span><span class="value"><span class="status testing" id="dns-google">待测试</span></span></div>
     </section>
 
     <button id="submit-btn" type="button">提交测试记录</button>
@@ -401,6 +404,36 @@
       }
     }
 
+    async function dnsCheck(name, domain, elementId) {
+      const element = document.getElementById(elementId);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(`/api/dns-check?domain=${encodeURIComponent(domain)}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+          setStatus(element, `查询失败 ${response.status}`, 'error');
+          reportData.diagnostics[`dns_${name}`] = { ok: false, domain, error: `HTTP ${response.status}` };
+          return reportData.diagnostics[`dns_${name}`];
+        }
+        const result = await response.json();
+        if (result.ok) {
+          setStatus(element, `正常 ${result.durationMs}ms`, 'success');
+          reportData.diagnostics[`dns_${name}`] = { ok: true, domain, ips: result.ips, durationMs: result.durationMs };
+        } else {
+          setStatus(element, `解析失败 ${result.durationMs}ms`, 'error');
+          reportData.diagnostics[`dns_${name}`] = { ok: false, domain, durationMs: result.durationMs, error: result.error };
+        }
+        return reportData.diagnostics[`dns_${name}`];
+      } catch (error) {
+        clearTimeout(timeoutId);
+        const reason = error.name === 'AbortError' ? '查询超时' : '查询失败';
+        setStatus(element, reason, 'error');
+        reportData.diagnostics[`dns_${name}`] = { ok: false, domain, error: reason };
+        return reportData.diagnostics[`dns_${name}`];
+      }
+    }
+
     function setStatus(element, text, className) {
       element.textContent = text;
       element.className = `status ${className}`;
@@ -430,6 +463,11 @@
         testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic'),
         testConnect('target', TARGET_MAIN_SITE, 'ping-target'),
         testConnect('googleapis', 'https://www.googleapis.com', 'ping-google'),
+      ]);
+      await Promise.all([
+        dnsCheck('domestic', 'aliyun.com', 'dns-domestic'),
+        dnsCheck('target', 'studio.atlascapture.io', 'dns-target'),
+        dnsCheck('googleapis', 'googleapis.com', 'dns-google'),
       ]);
       reportData.networkSummary = [domesticResult, targetResult, googleapisResult]
         .map((value) => `${value.url}:${value.ok ? `${value.duration}ms` : value.reason}`)

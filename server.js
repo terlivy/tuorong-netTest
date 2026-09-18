@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const dns = require('node:dns');
 const fs = require('node:fs');
 const fsPromises = require('node:fs/promises');
 const http = require('node:http');
@@ -147,6 +148,17 @@ async function routeRequest(req, res, context) {
     const ip = clientIpFor(req).replace(/^::ffff:/, '');
     const result = await lookupNetworkInfo(ip);
     sendJson(res, 200, { ip, ...result });
+    return;
+  }
+
+  if (pathname === '/api/dns-check' && req.method === 'GET') {
+    const domain = clean(url.searchParams.get('domain')).toLowerCase();
+    if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+      sendJson(res, 400, { error: '域名格式不正确' });
+      return;
+    }
+    const result = await resolveDomain(domain);
+    sendJson(res, 200, { domain, ...result });
     return;
   }
 
@@ -337,6 +349,20 @@ async function buildAccessSummary(days) {
   });
 
   return { days: daily.length, requestedDays: days, daily };
+}
+
+async function resolveDomain(domain) {
+  const start = Date.now();
+  return new Promise((resolve) => {
+    dns.resolve4(domain, (err, addresses) => {
+      const durationMs = Date.now() - start;
+      if (err) {
+        resolve({ ok: false, durationMs, error: err.code || err.message });
+        return;
+      }
+      resolve({ ok: true, durationMs, ips: addresses });
+    });
+  });
 }
 
 async function lookupNetworkInfo(ip) {
