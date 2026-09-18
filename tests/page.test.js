@@ -22,3 +22,16 @@ test('mobile page alerts based on target site connectivity after submit', async 
   assert.match(html, /alert\('成功/);
   assert.match(html, /alert\('已记录问题，技术服务会加急处理/);
 });
+
+test('mobile page keeps technical diagnosis fields in admin only', async () => {
+  const html = await fs.readFile('test.html', 'utf8');
+
+  assert.equal(html.includes('id="login-result"'), false);
+  assert.equal(html.includes('id="issue"'), false);
+  assert.equal(html.includes('id="notes"'), false);
+  assert.equal(html.includes('for="login-result"'), false);
+  assert.equal(html.includes('for="issue"'), false);
+  assert.equal(html.includes('for="notes"'), false);
+  assert.match(html, /reportData\.loginResult = targetResult\.ok \? 'success' : 'failed'/);
+  assert.match(html, /reportData\.status = targetResult\.ok \? 'resolved' : 'open'/);
+});
