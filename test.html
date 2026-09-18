@@ -242,6 +242,17 @@
       screen: `${window.screen.width}x${window.screen.height} DPR ${window.devicePixelRatio || 1}`,
       language: navigator.language || '',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      clientIp: '',
+      ispName: '',
+      ipAsn: '',
+      ipCountry: '',
+      ipRegion: '',
+      ipCity: '',
+      networkEffectiveType: '',
+      networkDownlink: '',
+      networkRtt: '',
+      networkType: '',
+      networkSaveData: '',
       targetUrl: TARGET_MAIN_SITE,
       diagnostics: {},
     };
@@ -283,6 +294,30 @@
       const matchedBrowser = browserRules.find(([key]) => ua.includes(key));
       reportData.browser = matchedBrowser ? matchedBrowser[1] : 'WebKit/其他浏览器';
 
+      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (connection) {
+        reportData.networkEffectiveType = connection.effectiveType || '';
+        reportData.networkDownlink = Number.isFinite(connection.downlink) ? `${connection.downlink} Mbps` : '';
+        reportData.networkRtt = Number.isFinite(connection.rtt) ? `${connection.rtt} ms` : '';
+        reportData.networkType = connection.type || '';
+        reportData.networkSaveData = connection.saveData ? '开启' : '关闭';
+      }
+    }
+
+    async function lookupNetworkInfo() {
+      try {
+        const response = await fetch('/api/network-info');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        reportData.clientIp = data.ip || '';
+        reportData.ispName = data.ispName || '';
+        reportData.ipAsn = data.ipAsn || '';
+        reportData.ipCountry = data.ipCountry || '';
+        reportData.ipRegion = data.ipRegion || '';
+        reportData.ipCity = data.ipCity || '';
+      } catch (error) {
+        // 静默失败，不阻塞主流程
+      }
     }
 
     async function testConnect(name, url, elementId) {
@@ -466,6 +501,7 @@
     window.addEventListener('load', () => {
       analyzeEnvironment();
       loadAreas();
+      lookupNetworkInfo();
       document.getElementById('submit-btn').addEventListener('click', submitData);
     });
   </script>

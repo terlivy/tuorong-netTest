@@ -31,6 +31,17 @@ const CSV_FIELDS = [
   'screen',
   'language',
   'timezone',
+  'clientIp',
+  'ispName',
+  'ipAsn',
+  'ipCountry',
+  'ipRegion',
+  'ipCity',
+  'networkEffectiveType',
+  'networkDownlink',
+  'networkRtt',
+  'networkType',
+  'networkSaveData',
   'notes',
   'createdAt',
   'updatedAt',
@@ -119,6 +130,13 @@ async function routeRequest(req, res, context) {
     );
     await writeRecords(dataFile, [...normalized, ...records]);
     sendJson(res, 200, { imported: normalized.length });
+    return;
+  }
+
+  if (pathname === '/api/network-info' && req.method === 'GET') {
+    const ip = clientIpFor(req).replace(/^::ffff:/, '');
+    const result = await lookupNetworkInfo(ip);
+    sendJson(res, 200, { ip, ...result });
     return;
   }
 
@@ -308,6 +326,48 @@ async function buildAccessSummary(days) {
   return { days: daily.length, requestedDays: days, daily };
 }
 
+async function lookupNetworkInfo(ip) {
+  // 跳过本地 / 私有 IP — 反查无意义
+  if (!ip || ip === '127.0.0.1' || ip === '::1' || /^10\./.test(ip) || /^192\.168\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) {
+    return { configured: false, error: '内网 IP，不参与反查' };
+  }
+  const url = new URL(`https://ipwho.is/${encodeURIComponent(ip)}`);
+  url.searchParams.set('fields', 'connection.isp,connection.org,connection.asn,country.name,region.name,city.name');
+  return new Promise((resolve) => {
+    const req = https.request(url, { method: 'GET', timeout: 4000 }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (!data || data.success === false) {
+            resolve({ configured: true, error: (data && data.message) || '反查服务未返回有效结果' });
+            return;
+          }
+          const conn = data.connection || {};
+          const pickName = (v) => (v && typeof v === 'object' ? (v.name || '') : (v || ''));
+          resolve({
+            configured: true,
+            ispName: conn.org || conn.isp || '',
+            ipAsn: conn.asn ? String(conn.asn) : '',
+            ipCountry: pickName(data.country),
+            ipRegion: pickName(data.region),
+            ipCity: pickName(data.city),
+          });
+        } catch (error) {
+          resolve({ configured: true, error: `反查响应解析失败：${error.message}` });
+        }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (error) => {
+      resolve({ configured: true, error: `反查请求失败：${error.message}` });
+    });
+    req.end();
+  });
+}
+
 function reverseGeocodeWithAmap({ lat, lng, key }) {
   const url = new URL('https://restapi.amap.com/v3/geocode/regeo');
   url.searchParams.set('key', key);
@@ -403,6 +463,17 @@ function normalizeRecord(payload) {
     screen: clean(payload.screen),
     language: clean(payload.language),
     timezone: clean(payload.timezone),
+    clientIp: clean(payload.clientIp),
+    ispName: clean(payload.ispName),
+    ipAsn: clean(payload.ipAsn),
+    ipCountry: clean(payload.ipCountry),
+    ipRegion: clean(payload.ipRegion),
+    ipCity: clean(payload.ipCity),
+    networkEffectiveType: clean(payload.networkEffectiveType),
+    networkDownlink: clean(payload.networkDownlink),
+    networkRtt: clean(payload.networkRtt),
+    networkType: clean(payload.networkType),
+    networkSaveData: clean(payload.networkSaveData),
     notes: clean(payload.notes),
     diagnostics: payload.diagnostics && typeof payload.diagnostics === 'object' ? payload.diagnostics : {},
     createdAt: clean(payload.createdAt) || now,

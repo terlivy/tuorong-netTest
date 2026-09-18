@@ -103,6 +103,40 @@
     .access-table tr.warn td { color: var(--amber); }
     .access-table tr.err td { color: var(--red); }
 
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      background: none;
+      border: none;
+      padding: 10px 18px;
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .tab-panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
     .toolbar {
       display: grid;
       grid-template-columns: 2fr repeat(4, minmax(120px, 1fr)) auto auto;
@@ -239,8 +273,68 @@
     <p>记录电话号码、位置、手机信息、问题和解决方案，用于定位无法登录国外网站的原因。</p>
   </header>
 
-  <main>
-    <section class="access-panel">
+<main>
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="records">问题记录</button>
+      <button type="button" class="tab" data-tab="access">访问记录</button>
+    </div>
+
+    <section class="tab-panel active" data-tab="records">
+      <div class="toolbar">
+        <div>
+          <label for="query">关键词</label>
+          <input id="query" placeholder="姓名、手机号、问题、方案、浏览器">
+        </div>
+        <div>
+          <label for="status">状态</label>
+          <select id="status">
+            <option value="">全部</option>
+            <option value="open">待处理</option>
+            <option value="blocked">阻塞</option>
+            <option value="resolved">已解决</option>
+          </select>
+        </div>
+        <div>
+          <label for="brand">品牌</label>
+          <input id="brand" placeholder="华为/苹果">
+        </div>
+        <div>
+          <label for="os">系统</label>
+          <input id="os" placeholder="Android/iOS">
+        </div>
+        <div>
+          <label for="browser">浏览器</label>
+          <input id="browser" placeholder="微信/Safari">
+        </div>
+        <button type="button" id="export-btn">导出 CSV</button>
+        <label class="file-label" for="import-file">导入 CSV</label>
+        <input class="file-input" id="import-file" type="file" accept=".csv,text/csv">
+      </div>
+
+      <div class="message" id="message">正在加载记录...</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>姓名</th>
+              <th>电话</th>
+              <th>位置</th>
+              <th>状态</th>
+              <th>手机信息</th>
+              <th>登录结果</th>
+              <th>问题</th>
+              <th>解决方案</th>
+              <th>网络诊断</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="records-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="access-panel tab-panel" data-tab="access">
       <h2>按日访问统计</h2>
       <p>所有 <code>42.192.109.248</code> 上的 HTTP 请求都会落到 <code>data/access-YYYY-MM-DD.jsonl</code>，下方按日聚合展示。点击「刷新」立即重读所有日志文件。</p>
       <div style="display:flex; gap:8px; align-items:end; margin-bottom:10px;">
@@ -272,61 +366,7 @@
         </tbody>
       </table>
     </section>
-
-    <div class="toolbar">
-      <div>
-        <label for="query">关键词</label>
-        <input id="query" placeholder="姓名、手机号、问题、方案、浏览器">
-      </div>
-      <div>
-        <label for="status">状态</label>
-        <select id="status">
-          <option value="">全部</option>
-          <option value="open">待处理</option>
-          <option value="blocked">阻塞</option>
-          <option value="resolved">已解决</option>
-        </select>
-      </div>
-      <div>
-        <label for="brand">品牌</label>
-        <input id="brand" placeholder="华为/苹果">
-      </div>
-      <div>
-        <label for="os">系统</label>
-        <input id="os" placeholder="Android/iOS">
-      </div>
-      <div>
-        <label for="browser">浏览器</label>
-        <input id="browser" placeholder="微信/Safari">
-      </div>
-      <button type="button" id="export-btn">导出 CSV</button>
-      <label class="file-label" for="import-file">导入 CSV</label>
-      <input class="file-input" id="import-file" type="file" accept=".csv,text/csv">
-    </div>
-
-    <div class="message" id="message">正在加载记录...</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>姓名</th>
-            <th>电话</th>
-            <th>位置</th>
-            <th>状态</th>
-            <th>手机信息</th>
-            <th>登录结果</th>
-            <th>问题</th>
-            <th>解决方案</th>
-            <th>网络诊断</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="records-body"></tbody>
-      </table>
-    </div>
   </main>
-
   <dialog id="edit-dialog">
     <form method="dialog" class="dialog-body" id="edit-form">
       <h2>编辑记录</h2>
@@ -596,6 +636,16 @@
     }
 
     filters.forEach((id) => document.getElementById(id).addEventListener('input', loadRecords));
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === target));
+        document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.tab === target));
+        if (target === 'access') {
+          loadAccessSummary();
+        }
+      });
+    });
     document.getElementById('access-refresh-btn').addEventListener('click', loadAccessSummary);
     document.getElementById('export-btn').addEventListener('click', exportCsv);
     document.getElementById('import-file').addEventListener('change', importCsv);
