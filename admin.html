@@ -389,6 +389,18 @@
           <input id="edit-location-address">
         </div>
         <div>
+          <label for="edit-brand">品牌</label>
+          <select id="edit-brand"></select>
+        </div>
+        <div>
+          <label for="edit-os">系统+版本号</label>
+          <select id="edit-os"></select>
+        </div>
+        <div>
+          <label for="edit-browser">浏览器</label>
+          <select id="edit-browser"></select>
+        </div>
+        <div>
           <label for="edit-status">状态</label>
           <select id="edit-status">
             <option value="open">待处理</option>
@@ -418,6 +430,35 @@
 
   <script>
     const state = { records: [] };
+
+    function collectDistinctValues(records, field) {
+      const set = new Set();
+      records.forEach((record) => {
+        const value = (record[field] || '').trim();
+        if (value) set.add(value);
+      });
+      return [...set].sort((a, b) => a.localeCompare(b, 'zh'));
+    }
+
+    function renderSelectOptions(select, options, currentValue) {
+      const all = [...options];
+      if (currentValue && !all.includes(currentValue)) all.unshift(currentValue);
+      select.innerHTML = '';
+      if (!currentValue) {
+        select.appendChild(new Option('— 未选择 —', ''));
+      }
+      all.forEach((v) => select.appendChild(new Option(v, v)));
+      if (currentValue) select.value = currentValue;
+    }
+
+    function refreshDeviceSelects() {
+      const brands = collectDistinctValues(state.records, 'brand');
+      const oses = collectDistinctValues(state.records, 'os');
+      const browsers = collectDistinctValues(state.records, 'browser');
+      renderSelectOptions(document.getElementById('edit-brand'), brands, '');
+      renderSelectOptions(document.getElementById('edit-os'), oses, '');
+      renderSelectOptions(document.getElementById('edit-browser'), browsers, '');
+    }
     const filters = ['query', 'status', 'brand', 'os', 'browser'];
 
     function escapeHtml(value) {
@@ -461,6 +502,7 @@
       const data = await response.json();
       state.records = data.records || [];
       renderRecords();
+      refreshDeviceSelects();
     }
 
     function renderRecords() {
@@ -505,6 +547,9 @@
       document.getElementById('edit-phone').value = record.phone || '';
       document.getElementById('edit-manual-location').value = record.manualLocation || '';
       document.getElementById('edit-location-address').value = record.locationAddress || '';
+      renderSelectOptions(document.getElementById('edit-brand'), collectDistinctValues(state.records, 'brand'), record.brand || '');
+      renderSelectOptions(document.getElementById('edit-os'), collectDistinctValues(state.records, 'os'), record.os || '');
+      renderSelectOptions(document.getElementById('edit-browser'), collectDistinctValues(state.records, 'browser'), record.browser || '');
       document.getElementById('edit-status').value = record.status || 'open';
       document.getElementById('edit-issue').value = record.issue || '';
       document.getElementById('edit-solution').value = record.solution || '';
@@ -523,6 +568,9 @@
           phone: document.getElementById('edit-phone').value,
           manualLocation: document.getElementById('edit-manual-location').value,
           locationAddress: document.getElementById('edit-location-address').value,
+          brand: document.getElementById('edit-brand').value,
+          os: document.getElementById('edit-os').value,
+          browser: document.getElementById('edit-browser').value,
           status: document.getElementById('edit-status').value,
           issue: document.getElementById('edit-issue').value,
           solution: document.getElementById('edit-solution').value,

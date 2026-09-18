@@ -271,22 +271,47 @@
       ['safari', 'Safari'],
     ];
 
+    function detectOs(ua, uaLower) {
+      if (uaLower.includes('iphone') || uaLower.includes('ipad')) {
+        const m = ua.match(/OS (\d+)(?:[_.](\d+))?/);
+        return m ? (m[2] ? `iOS ${m[1]}.${m[2]}` : `iOS ${m[1]}`) : 'iOS';
+      }
+      if (uaLower.includes('harmonyos')) {
+        const m = ua.match(/HarmonyOS\s*(\d+(?:\.\d+)?)/i);
+        return m ? `HarmonyOS ${m[1]}` : 'HarmonyOS';
+      }
+      if (uaLower.includes('android')) {
+        const m = ua.match(/Android (\d+(?:\.\d+)?)/);
+        return m ? `Android ${m[1]}` : 'Android';
+      }
+      if (uaLower.includes('windows')) {
+        const m = ua.match(/Windows NT (\d+\.\d+)/);
+        if (m) {
+          const map = { '10.0': 'Windows 10/11', '6.3': 'Windows 8.1', '6.2': 'Windows 8', '6.1': 'Windows 7' };
+          return map[m[1]] || `Windows NT ${m[1]}`;
+        }
+        return 'Windows';
+      }
+      if (uaLower.includes('mac os')) {
+        const m = ua.match(/Mac OS X (\d+)[._](\d+)/);
+        return m ? `macOS ${m[1]}.${m[2]}` : 'macOS';
+      }
+      return '';
+    }
+
     function analyzeEnvironment() {
-      const ua = navigator.userAgent.toLowerCase();
+      const ua = navigator.userAgent;
+      const uaLower = ua.toLowerCase();
 
-      if (ua.includes('iphone') || ua.includes('ipad')) reportData.os = 'iOS';
-      else if (ua.includes('android')) reportData.os = 'Android';
-      else if (ua.includes('harmonyos')) reportData.os = 'HarmonyOS';
-      else if (ua.includes('windows')) reportData.os = 'Windows';
-      else if (ua.includes('mac os')) reportData.os = 'macOS';
+      reportData.os = detectOs(ua, uaLower);
 
-      if (ua.includes('huawei') || ua.includes('harmonyos')) reportData.brand = '华为';
-      else if (ua.includes('honor')) reportData.brand = '荣耀';
-      else if (ua.includes('xiaomi') || ua.includes('miui') || ua.includes('hyperos') || ua.includes('redmi')) reportData.brand = '小米/Redmi';
-      else if (ua.includes('oppo') || ua.includes('heytap')) reportData.brand = 'OPPO';
-      else if (ua.includes('vivo')) reportData.brand = 'VIVO';
-      else if (ua.includes('iphone') || ua.includes('ipad')) reportData.brand = '苹果';
-      else if (ua.includes('samsung')) reportData.brand = '三星';
+      if (uaLower.includes('huawei') || uaLower.includes('harmonyos')) reportData.brand = '华为';
+      else if (uaLower.includes('honor')) reportData.brand = '荣耀';
+      else if (uaLower.includes('xiaomi') || uaLower.includes('miui') || uaLower.includes('hyperos') || uaLower.includes('redmi')) reportData.brand = '小米/Redmi';
+      else if (uaLower.includes('oppo') || uaLower.includes('heytap')) reportData.brand = 'OPPO';
+      else if (uaLower.includes('vivo')) reportData.brand = 'VIVO';
+      else if (uaLower.includes('iphone') || uaLower.includes('ipad')) reportData.brand = '苹果';
+      else if (uaLower.includes('samsung')) reportData.brand = '三星';
 
       const modelMatch = navigator.userAgent.match(/\(([^)]+)\)/);
       reportData.model = modelMatch ? modelMatch[1] : '';
