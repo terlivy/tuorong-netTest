@@ -100,6 +100,12 @@
       text-align: left;
     }
 
+    .network-summary {
+      white-space: pre-wrap;
+      font-family: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+      font-size: 12px;
+    }
+
     .access-table tr.warn td { color: var(--amber); }
     .access-table tr.err td { color: var(--red); }
 
@@ -541,7 +547,7 @@
           <td>${escapeHtml(record.loginResult)}</td>
           <td>${escapeHtml(record.issue)}</td>
           <td>${escapeHtml(record.solution)}</td>
-          <td>${escapeHtml(record.networkSummary)}</td>
+          <td class="network-summary">${escapeHtml(record.networkSummary)}</td>
           <td>
             <div class="actions">
               <button class="small" type="button" onclick="openEdit('${record.id}')">编辑</button>

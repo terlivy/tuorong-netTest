@@ -459,19 +459,21 @@
       diagnosticsSection.hidden = false;
       resetDiagnosticsStatus();
 
-      const [domesticResult, targetResult, googleapisResult] = await Promise.all([
+      const [domesticResult, targetResult, googleapisResult, dnsDomestic, dnsTarget, dnsGoogle] = await Promise.all([
         testConnect('domestic', 'https://www.aliyun.com/favicon.ico', 'ping-domestic'),
         testConnect('target', TARGET_MAIN_SITE, 'ping-target'),
         testConnect('googleapis', 'https://www.googleapis.com', 'ping-google'),
-      ]);
-      await Promise.all([
         dnsCheck('domestic', 'aliyun.com', 'dns-domestic'),
         dnsCheck('target', 'studio.atlascapture.io', 'dns-target'),
         dnsCheck('googleapis', 'googleapis.com', 'dns-google'),
       ]);
-      reportData.networkSummary = [domesticResult, targetResult, googleapisResult]
-        .map((value) => `${value.url}:${value.ok ? `${value.duration}ms` : value.reason}`)
+      const pingSummary = [domesticResult, targetResult, googleapisResult]
+        .map((value) => `${new URL(value.url).hostname}:${value.ok ? `${value.duration}ms` : value.reason}`)
         .join('; ');
+      const dnsSummary = [dnsDomestic, dnsTarget, dnsGoogle]
+        .map((value) => `${value.domain}:${value.ok ? `${value.durationMs}ms[${value.ips[0]}]` : `${value.durationMs}ms[${value.error || 'fail'}]`}`)
+        .join('; ');
+      reportData.networkSummary = `Ping: ${pingSummary}\nDNS: ${dnsSummary}`;
       reportData.loginResult = targetResult.ok ? '成功' : '失败';
       reportData.status = targetResult.ok ? 'resolved' : 'open';
       reportData.issue = targetResult.ok ? '目标登录地址可访问' : '目标登录地址无法访问';
